@@ -1,58 +1,82 @@
 {{- if .Values.monitoring.enabled }}
+{{- $defaultMonitor := dict "internalListenersType" .Values.monitoring.internalListenersType "path" .Values.monitoring.path "params" .Values.monitoring.params "tlsConfig" .Values.monitoring.tlsConfig "authorization" .Values.monitoring.authorization "interval" .Values.monitoring.interval -}}
+{{- $monitors := .Values.monitoring.monitors -}}
+{{- if not $monitors -}}
+{{- $monitors = list $defaultMonitor -}}
+{{- end -}}
+{{- range $index, $monitor := $monitors }}
+{{- $serviceMonitorName := include "nifi-cluster.fullname" $ -}}
+{{- if $monitor.name -}}
+{{- $normalizedMonitorName := regexReplaceAll "[^a-z0-9-]+" (lower (toString $monitor.name)) "-" -}}
+{{- $serviceMonitorName = printf "%s-%s" $serviceMonitorName $normalizedMonitorName | trunc 63 | trimSuffix "-" -}}
+{{- else if gt (len $monitors) 1 -}}
+{{- $serviceMonitorName = printf "%s-%d" $serviceMonitorName (add1 $index) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- $listenerType := default $.Values.monitoring.internalListenersType $monitor.internalListenersType -}}
+{{- $path := default $.Values.monitoring.path $monitor.path -}}
+{{- $params := default $.Values.monitoring.params $monitor.params -}}
+{{- $tlsConfig := default $.Values.monitoring.tlsConfig $monitor.tlsConfig -}}
+{{- $authorization := default $.Values.monitoring.authorization $monitor.authorization -}}
+{{- $interval := default $.Values.monitoring.interval $monitor.interval -}}
+---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: {{ include "nifi-cluster.fullname" . }}
+  name: {{ $serviceMonitorName }}
   labels:
-    {{- include "nifi-cluster.labels" . | nindent 4 }}
+    {{- include "nifi-cluster.labels" $ | nindent 4 }}
 spec:
   endpoints:
-  {{- range $internalListener := .Values.cluster.listenersConfig.internalListeners }}
-  {{- if eq $internalListener.type $.Values.monitoring.internalListenersType }}
-  - path: {{ $.Values.monitoring.path }}
+  {{- range $internalListener := $.Values.cluster.listenersConfig.internalListeners }}
+  {{- if eq $internalListener.type $listenerType }}
+  - path: {{ $path }}
     port: {{ $internalListener.name }}
-    {{- if or $.Values.monitoring.tlsConfig $.Values.monitoring.authorization }}
+    {{- if $params }}
+    params:
+      {{- toYaml $params | nindent 6 }}
+    {{- end }}
+    {{- if or $tlsConfig $authorization }}
     scheme: https
-    {{- if $.Values.monitoring.tlsConfig }}
+    {{- if $tlsConfig }}
     tlsConfig:
-      {{- if $.Values.monitoring.tlsConfig.secretName }}
+      {{- if $tlsConfig.secretName }}
       ca:
         secret:
           key: ca.crt
-          name: {{ $.Values.monitoring.tlsConfig.secretName }}
+          name: {{ $tlsConfig.secretName }}
       cert:
         secret:
           key: tls.crt
-          name: {{ $.Values.monitoring.tlsConfig.secretName }}
+          name: {{ $tlsConfig.secretName }}
       keySecret:
         key: tls.key
-        name: {{ $.Values.monitoring.tlsConfig.secretName }}
+        name: {{ $tlsConfig.secretName }}
       {{- else }}
-      {{- with $.Values.monitoring.tlsConfig.caFile }}
+      {{- with $tlsConfig.caFile }}
       caFile: {{ . }}
       {{- end }}
-      {{- with $.Values.monitoring.tlsConfig.certFile }}
+      {{- with $tlsConfig.certFile }}
       certFile: {{ . }}
       {{- end }}
-      {{- with $.Values.monitoring.tlsConfig.keyFile }}
+      {{- with $tlsConfig.keyFile }}
       keyFile: {{ . }}
       {{- end }}
       {{- end }}
-      {{- with $.Values.monitoring.tlsConfig.insecureSkipVerify }}
+      {{- with $tlsConfig.insecureSkipVerify }}
       insecureSkipVerify: {{ . }}
       {{- end }}
-      {{- with $.Values.monitoring.tlsConfig.serverName }}
+      {{- with $tlsConfig.serverName }}
       serverName: {{ . }}
       {{- end }}
     {{- end }}
     {{- end }}
-    {{- if $.Values.monitoring.authorization }}
+    {{- if $authorization }}
     authorization:
       credentials:
-        key: {{ $.Values.monitoring.authorization.bearerTokenKey | default "nifi_token" }}
-        name: {{ $.Values.monitoring.authorization.bearerTokenSecretName }}
+        key: {{ $authorization.bearerTokenKey | default "nifi_token" }}
+        name: {{ $authorization.bearerTokenSecretName }}
     {{- end }}
-    {{- with $.Values.monitoring.interval }}
+    {{- with $interval }}
     interval: {{ . }}
     {{- end }}
     relabelings:
@@ -76,8 +100,9 @@ spec:
   {{- end }}
   namespaceSelector:
     matchNames:
-      - {{ .Release.Namespace }}
+      - {{ $.Release.Namespace }}
   selector:
     matchLabels:
-      nifi_cr: {{ include "nifi-cluster.fullname" . }}
+      nifi_cr: {{ include "nifi-cluster.fullname" $ }}
+{{- end }}
 {{- end }}

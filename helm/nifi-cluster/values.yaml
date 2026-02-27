@@ -319,6 +319,10 @@ monitoring:
   internalListenersType: "prometheus"
   # For NiFi Version 2 use the /nifi-api/flow/metrics/prometheus
   path: "/metrics"
+  # Optional query params for the endpoint.
+  #params:
+  #  includedRegistries:
+  #    - "JVM"
   # Optional fields to provide the ServiceMonitor see the following documentation for more information
   # https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.Endpoint 
   #tlsConfig:
@@ -333,6 +337,23 @@ monitoring:
   #authorization
   #  bearerTokenSecretName:
   #  bearerTokenKey: 
+  # Optional list of monitors. If provided, a ServiceMonitor is created for each entry.
+  # If empty, the chart uses the single-monitor fields above for backward compatibility.
+  #monitors:
+  #  - name: flow
+  #    internalListenersType: "http"
+  #    path: "/nifi-api/flow/metrics/prometheus"
+  #    params:
+  #      sampleLabelValue:
+  #        - "(ProcessGroup|RootProcessGroup)"
+  #      includedRegistries:
+  #        - "NIFI"
+  #  - name: jvm
+  #    internalListenersType: "http"
+  #    path: "/nifi-api/flow/metrics/prometheus"
+  #    params:
+  #      includedRegistries:
+  #        - "JVM"
 
 # Logging is enabled by the banzai cloud logging operator. This can be deployed stand-alone or as a part of the Rancher Logging application.
 # Do not enable this unless you've installed rancher-logging or the banzai logging operator directly.
