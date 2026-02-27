@@ -2,6 +2,8 @@
 
 ### Added
 
+- [PR #647](https://github.com/konpyutaika/nifikop/pull/647) - **[Helm Chart]** Add support for multiple ServiceMonitors with per-monitor URL params and endpoint overrides.
+
 ### Changed
 
 - [PR #641](https://github.com/konpyutaika/nifikop/pull/641) - **[Operator]** Upgrade golang to 1.25.7.
