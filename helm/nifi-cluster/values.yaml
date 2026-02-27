@@ -362,6 +362,12 @@ monitoring:
   #    params:
   #      includedRegistries:
   #        - "JVM"
+  #  # Example: disable inherited TLS/auth for a plain HTTP scrape endpoint.
+  #  - name: jvm-http
+  #    path: "/nifi-api/flow/metrics/prometheus"
+  #    scheme: "http"
+  #    tlsConfig: null
+  #    authorization: null
 
 # Logging is enabled by the banzai cloud logging operator. This can be deployed stand-alone or as a part of the Rancher Logging application.
 # Do not enable this unless you've installed rancher-logging or the banzai logging operator directly.
