@@ -325,6 +325,7 @@ monitoring:
   #    - "JVM"
   # Optional scrape scheme override ("http" or "https"). If unset, existing behavior applies:
   # scheme defaults to https when tlsConfig or authorization is configured.
+  # Do not set tlsConfig when using scheme: "http".
   #scheme: "https"
   # Optional fields to provide the ServiceMonitor see the following documentation for more information
   # https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.Endpoint 
@@ -343,7 +344,8 @@ monitoring:
   # Optional list of monitors. If provided, a ServiceMonitor is created for each entry.
   # If empty, the chart uses the single-monitor fields above for backward compatibility.
   # Each monitor inherits global monitoring.* values unless that key is explicitly set
-  # on the monitor item. Set a key to null in a monitor item to disable an inherited value.
+  # on the monitor item. Object values replace inherited objects; they do not deep-merge.
+  # Use null / {} in a monitor item to disable inherited object values.
   #monitors:
   #  - name: flow
   #    internalListenersType: "http"
