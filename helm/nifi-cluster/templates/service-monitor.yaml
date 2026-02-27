@@ -1,5 +1,5 @@
 {{- if .Values.monitoring.enabled }}
-{{- $defaultMonitor := dict "internalListenersType" .Values.monitoring.internalListenersType "path" .Values.monitoring.path "params" .Values.monitoring.params "tlsConfig" .Values.monitoring.tlsConfig "authorization" .Values.monitoring.authorization "interval" .Values.monitoring.interval -}}
+{{- $defaultMonitor := dict "internalListenersType" .Values.monitoring.internalListenersType "path" .Values.monitoring.path "params" .Values.monitoring.params "tlsConfig" .Values.monitoring.tlsConfig "authorization" .Values.monitoring.authorization "interval" .Values.monitoring.interval "scheme" .Values.monitoring.scheme -}}
 {{- $monitors := .Values.monitoring.monitors -}}
 {{- if not $monitors -}}
 {{- $monitors = list $defaultMonitor -}}
@@ -12,13 +12,37 @@
 {{- else if gt (len $monitors) 1 -}}
 {{- $serviceMonitorName = printf "%s-%d" $serviceMonitorName (add1 $index) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
-{{- $listenerType := default $.Values.monitoring.internalListenersType $monitor.internalListenersType -}}
-{{- $path := default $.Values.monitoring.path $monitor.path -}}
-{{- $params := default $.Values.monitoring.params $monitor.params -}}
-{{- $tlsConfig := default $.Values.monitoring.tlsConfig $monitor.tlsConfig -}}
-{{- $authorization := default $.Values.monitoring.authorization $monitor.authorization -}}
-{{- $interval := default $.Values.monitoring.interval $monitor.interval -}}
+{{- $listenerType := $.Values.monitoring.internalListenersType -}}
+{{- if hasKey $monitor "internalListenersType" -}}
+{{- $listenerType = $monitor.internalListenersType -}}
+{{- end -}}
+{{- $path := $.Values.monitoring.path -}}
+{{- if hasKey $monitor "path" -}}
+{{- $path = $monitor.path -}}
+{{- end -}}
+{{- $params := $.Values.monitoring.params -}}
+{{- if hasKey $monitor "params" -}}
+{{- $params = $monitor.params -}}
+{{- end -}}
+{{- $tlsConfig := $.Values.monitoring.tlsConfig -}}
+{{- if hasKey $monitor "tlsConfig" -}}
+{{- $tlsConfig = $monitor.tlsConfig -}}
+{{- end -}}
+{{- $authorization := $.Values.monitoring.authorization -}}
+{{- if hasKey $monitor "authorization" -}}
+{{- $authorization = $monitor.authorization -}}
+{{- end -}}
+{{- $interval := $.Values.monitoring.interval -}}
+{{- if hasKey $monitor "interval" -}}
+{{- $interval = $monitor.interval -}}
+{{- end -}}
+{{- $scheme := $.Values.monitoring.scheme -}}
+{{- if hasKey $monitor "scheme" -}}
+{{- $scheme = $monitor.scheme -}}
+{{- end -}}
+{{- if gt $index 0 }}
 ---
+{{- end }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -35,8 +59,11 @@ spec:
     params:
       {{- toYaml $params | nindent 6 }}
     {{- end }}
-    {{- if or $tlsConfig $authorization }}
+    {{- if $scheme }}
+    scheme: {{ $scheme }}
+    {{- else if or $tlsConfig $authorization }}
     scheme: https
+    {{- end }}
     {{- if $tlsConfig }}
     tlsConfig:
       {{- if $tlsConfig.secretName }}
@@ -68,7 +95,6 @@ spec:
       {{- with $tlsConfig.serverName }}
       serverName: {{ . }}
       {{- end }}
-    {{- end }}
     {{- end }}
     {{- if $authorization }}
     authorization:

@@ -323,6 +323,9 @@ monitoring:
   #params:
   #  includedRegistries:
   #    - "JVM"
+  # Optional scrape scheme override ("http" or "https"). If unset, existing behavior applies:
+  # scheme defaults to https when tlsConfig or authorization is configured.
+  #scheme: "https"
   # Optional fields to provide the ServiceMonitor see the following documentation for more information
   # https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api-reference/api.md#monitoring.coreos.com/v1.Endpoint 
   #tlsConfig:
@@ -339,10 +342,13 @@ monitoring:
   #  bearerTokenKey: 
   # Optional list of monitors. If provided, a ServiceMonitor is created for each entry.
   # If empty, the chart uses the single-monitor fields above for backward compatibility.
+  # Each monitor inherits global monitoring.* values unless that key is explicitly set
+  # on the monitor item. Set a key to null in a monitor item to disable an inherited value.
   #monitors:
   #  - name: flow
   #    internalListenersType: "http"
   #    path: "/nifi-api/flow/metrics/prometheus"
+  #    scheme: "http"
   #    params:
   #      sampleLabelValue:
   #        - "(ProcessGroup|RootProcessGroup)"
