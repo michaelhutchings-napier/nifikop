@@ -58,7 +58,7 @@ func CreateUserGroup(userGroup *v1.NifiUserGroup,
 }
 
 func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
-	config *clientconfig.NifiConfig) (*v1.NifiUserGroupStatus, error) {
+	managedNodesUserGroup *v1.NifiUserGroup, config *clientconfig.NifiConfig) (*v1.NifiUserGroupStatus, error) {
 	nClient, err := common.NewClusterConnection(log, config)
 	if err != nil {
 		return nil, err
@@ -104,6 +104,9 @@ func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
 	for _, entity := range entity.Component.AccessPolicies {
 		contains := userGroupContainsAccessPolicy(userGroup, entity, config.RootProcessGroupId)
 		if !contains {
+			if accesspolicies.ManagedNodesShouldKeepDataPolicy(userGroup, entity.Component.Action, entity.Component.Resource) {
+				continue
+			}
 			if err := accesspolicies.UpdateAccessPolicyEntity(&entity,
 				[]*v1.NifiUser{}, []*v1.NifiUser{},
 				[]*v1.NifiUserGroup{}, []*v1.NifiUserGroup{userGroup}, config); err != nil {
@@ -115,10 +118,12 @@ func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
 	// add
 	for _, accessPolicy := range userGroup.Spec.AccessPolicies {
 		contains := UserGroupEntityContainsAccessPolicy(entity, accessPolicy, config.RootProcessGroupId)
-		if !contains {
+		if !contains || accesspolicies.RequiresManagedNodes(&accessPolicy, managedNodesUserGroup) {
+			addUserGroups := accesspolicies.WithManagedNodesForDataPolicy(&accessPolicy,
+				[]*v1.NifiUserGroup{userGroup}, managedNodesUserGroup)
 			if err := accesspolicies.UpdateAccessPolicy(&accessPolicy,
 				[]*v1.NifiUser{}, []*v1.NifiUser{},
-				[]*v1.NifiUserGroup{userGroup}, []*v1.NifiUserGroup{}, config); err != nil {
+				addUserGroups, []*v1.NifiUserGroup{}, config); err != nil {
 				return &status, err
 			}
 		}

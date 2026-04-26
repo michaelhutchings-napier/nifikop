@@ -47,6 +47,13 @@ func LookupNifiUser(client runtimeClient.Client, userName, userNamespace string)
 	return
 }
 
+// LookupNifiUserGroup returns the user group instance based on its name and namespace.
+func LookupNifiUserGroup(client runtimeClient.Client, userGroupName, userGroupNamespace string) (userGroup *v1.NifiUserGroup, err error) {
+	userGroup = &v1.NifiUserGroup{}
+	err = client.Get(context.TODO(), types.NamespacedName{Name: userGroupName, Namespace: userGroupNamespace}, userGroup)
+	return
+}
+
 // LookupNifiDataflow returns the dataflow instance based on its name and namespace.
 func LookupNifiDataflow(client runtimeClient.Client, dataflowName, dataflowNamespace string) (dataflow *v1.NifiDataflow, err error) {
 	dataflow = &v1.NifiDataflow{}

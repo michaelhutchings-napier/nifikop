@@ -1,7 +1,10 @@
 package accesspolicies
 
 import (
+	"strings"
+
 	nigoapi "github.com/konpyutaika/nigoapi/pkg/nifi"
+	"k8s.io/apimachinery/pkg/types"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
 	"github.com/konpyutaika/nifikop/pkg/clientwrappers"
@@ -11,6 +14,8 @@ import (
 )
 
 var log = common.CustomLogger().Named("accesspolicies-method")
+
+const ManagedNodesGroupNameSuffix = ".managed-nodes"
 
 func ExistAccessPolicies(accessPolicy *v1.AccessPolicy, config *clientconfig.NifiConfig) (bool, error) {
 	nClient, err := common.NewClusterConnection(log, config)
@@ -147,7 +152,7 @@ func addRemoveUserGroupsFromAccessPolicyEntity(
 	entity *nigoapi.AccessPolicyEntity) {
 	// Add new userGroup from the access policy
 	for _, userGroup := range addUserGroups {
-		entity.Component.UserGroups = append(entity.Component.UserGroups, nigoapi.TenantEntity{Id: userGroup.Status.Id})
+		addUserGroupToAccessPolicyEntity(userGroup, entity)
 	}
 
 	// Remove user from the access policy
@@ -175,7 +180,7 @@ func addRemoveUsersFromAccessPolicyEntity(
 	entity *nigoapi.AccessPolicyEntity) {
 	// Add new user from the access policy
 	for _, user := range addUsers {
-		entity.Component.Users = append(entity.Component.Users, nigoapi.TenantEntity{Id: user.Status.Id})
+		addUserToAccessPolicyEntity(user, entity)
 	}
 
 	// Remove user from the access policy
@@ -195,4 +200,75 @@ func addRemoveUsersFromAccessPolicyEntity(
 		}
 	}
 	entity.Component.Users = usersAccessPolicy
+}
+
+func WithManagedNodesForDataPolicy(
+	accessPolicy *v1.AccessPolicy,
+	userGroups []*v1.NifiUserGroup,
+	managedNodesUserGroup *v1.NifiUserGroup) []*v1.NifiUserGroup {
+	if !RequiresManagedNodes(accessPolicy, managedNodesUserGroup) {
+		return userGroups
+	}
+
+	for _, userGroup := range userGroups {
+		if userGroupKey(userGroup) == userGroupKey(managedNodesUserGroup) {
+			return userGroups
+		}
+	}
+
+	return append(userGroups, managedNodesUserGroup)
+}
+
+func RequiresManagedNodes(accessPolicy *v1.AccessPolicy, managedNodesUserGroup *v1.NifiUserGroup) bool {
+	if managedNodesUserGroup == nil || managedNodesUserGroup.Status.Id == "" {
+		return false
+	}
+
+	return accessPolicy.Type == v1.ComponentAccessPolicyType &&
+		accessPolicy.Resource == v1.DataAccessPolicyResource &&
+		(accessPolicy.Action == v1.ReadAccessPolicyAction || accessPolicy.Action == v1.WriteAccessPolicyAction)
+}
+
+func ManagedNodesShouldKeepDataPolicy(userGroup *v1.NifiUserGroup, action, resource string) bool {
+	if !IsManagedNodesUserGroup(userGroup) {
+		return false
+	}
+
+	return (action == string(v1.ReadAccessPolicyAction) || action == string(v1.WriteAccessPolicyAction)) &&
+		strings.HasPrefix(resource, string(v1.DataAccessPolicyResource)+"/")
+}
+
+func IsManagedNodesUserGroup(userGroup *v1.NifiUserGroup) bool {
+	return userGroup != nil && strings.HasSuffix(userGroup.Name, ManagedNodesGroupNameSuffix)
+}
+
+func addUserGroupToAccessPolicyEntity(userGroup *v1.NifiUserGroup, entity *nigoapi.AccessPolicyEntity) {
+	if userGroup == nil || userGroup.Status.Id == "" {
+		return
+	}
+	for _, existing := range entity.Component.UserGroups {
+		if existing.Id == userGroup.Status.Id {
+			return
+		}
+	}
+	entity.Component.UserGroups = append(entity.Component.UserGroups, nigoapi.TenantEntity{Id: userGroup.Status.Id})
+}
+
+func addUserToAccessPolicyEntity(user *v1.NifiUser, entity *nigoapi.AccessPolicyEntity) {
+	if user == nil || user.Status.Id == "" {
+		return
+	}
+	for _, existing := range entity.Component.Users {
+		if existing.Id == user.Status.Id {
+			return
+		}
+	}
+	entity.Component.Users = append(entity.Component.Users, nigoapi.TenantEntity{Id: user.Status.Id})
+}
+
+func userGroupKey(userGroup *v1.NifiUserGroup) types.NamespacedName {
+	if userGroup == nil {
+		return types.NamespacedName{}
+	}
+	return types.NamespacedName{Name: userGroup.Name, Namespace: userGroup.Namespace}
 }

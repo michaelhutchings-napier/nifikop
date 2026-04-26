@@ -81,7 +81,8 @@ func CreateUser(user *v1.NifiUser, config *clientconfig.NifiConfig) (*v1.NifiUse
 	}, nil
 }
 
-func SyncUser(user *v1.NifiUser, config *clientconfig.NifiConfig) (*v1.NifiUserStatus, error) {
+func SyncUser(user *v1.NifiUser, config *clientconfig.NifiConfig,
+	managedNodesUserGroup *v1.NifiUserGroup) (*v1.NifiUserStatus, error) {
 	nClient, err := common.NewClusterConnection(log, config)
 	if err != nil {
 		return nil, err
@@ -139,7 +140,8 @@ func SyncUser(user *v1.NifiUser, config *clientconfig.NifiConfig) (*v1.NifiUserS
 	// add
 	for _, accessPolicy := range user.Spec.AccessPolicies {
 		contains := false
-		if !userEntityContainsAccessPolicy(entity, accessPolicy, config.RootProcessGroupId) {
+		if !userEntityContainsAccessPolicy(entity, accessPolicy, config.RootProcessGroupId) ||
+			accesspolicies.RequiresManagedNodes(&accessPolicy, managedNodesUserGroup) {
 			for _, group := range entity.Component.UserGroups {
 				userGroupEntity, err := nClient.GetUserGroup(group.Id)
 				if err := clientwrappers.ErrorGetOperation(log, err, "Get user-group"); err != nil {
@@ -152,9 +154,11 @@ func SyncUser(user *v1.NifiUser, config *clientconfig.NifiConfig) (*v1.NifiUserS
 				}
 			}
 			if !contains {
+				addUserGroups := accesspolicies.WithManagedNodesForDataPolicy(&accessPolicy,
+					[]*v1.NifiUserGroup{}, managedNodesUserGroup)
 				if err := accesspolicies.UpdateAccessPolicy(&accessPolicy,
 					[]*v1.NifiUser{user}, []*v1.NifiUser{},
-					[]*v1.NifiUserGroup{}, []*v1.NifiUserGroup{}, config); err != nil {
+					addUserGroups, []*v1.NifiUserGroup{}, config); err != nil {
 					return &status, err
 				}
 			}

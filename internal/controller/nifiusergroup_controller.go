@@ -289,7 +289,11 @@ func (r *NifiUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Sync UserGroup resource with NiFi side component
 	r.Recorder.Event(instance, corev1.EventTypeNormal, "Synchronizing",
 		fmt.Sprintf("Synchronizing user group %s", instance.Name))
-	status, err := usergroup.SyncUserGroup(instance, users, clientConfig)
+	managedNodesUserGroup, err := r.lookupManagedNodesUserGroup(cluster)
+	if err != nil {
+		return RequeueWithError(r.Log, "failed to lookup managed nodes group for user group "+instance.Name, err)
+	}
+	status, err := usergroup.SyncUserGroup(instance, users, managedNodesUserGroup, clientConfig)
 	if err != nil {
 		r.Recorder.Event(instance, corev1.EventTypeNormal, "SynchronizingFailed",
 			fmt.Sprintf("Synchronizing user group %s failed", instance.Name))
@@ -406,4 +410,16 @@ func (r *NifiUserGroupReconciler) updateStatus(ctx context.Context, userGroup *v
 		return r.Client.Status().Update(ctx, userGroup)
 	}
 	return nil
+}
+
+func (r *NifiUserGroupReconciler) lookupManagedNodesUserGroup(cluster *v1.NifiCluster) (*v1.NifiUserGroup, error) {
+	if len(cluster.Spec.Nodes) <= 1 {
+		return nil, nil
+	}
+
+	userGroup, err := k8sutil.LookupNifiUserGroup(r.Client, fmt.Sprintf("%s.managed-nodes", cluster.Name), cluster.Namespace)
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
+	return userGroup, err
 }
