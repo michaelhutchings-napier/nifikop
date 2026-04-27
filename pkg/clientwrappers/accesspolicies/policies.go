@@ -15,8 +15,6 @@ import (
 
 var log = common.CustomLogger().Named("accesspolicies-method")
 
-const ManagedNodesGroupNameSuffix = ".managed-nodes"
-
 func ExistAccessPolicies(accessPolicy *v1.AccessPolicy, config *clientconfig.NifiConfig) (bool, error) {
 	nClient, err := common.NewClusterConnection(log, config)
 	if err != nil {
@@ -229,17 +227,16 @@ func RequiresManagedNodes(accessPolicy *v1.AccessPolicy, managedNodesUserGroup *
 		(accessPolicy.Action == v1.ReadAccessPolicyAction || accessPolicy.Action == v1.WriteAccessPolicyAction)
 }
 
-func ManagedNodesShouldKeepDataPolicy(userGroup *v1.NifiUserGroup, action, resource string) bool {
-	if !IsManagedNodesUserGroup(userGroup) {
+func ManagedNodesShouldKeepDataPolicy(userGroup, managedNodesUserGroup *v1.NifiUserGroup, action, resource string) bool {
+	if userGroup == nil || managedNodesUserGroup == nil {
+		return false
+	}
+	if userGroupKey(userGroup) != userGroupKey(managedNodesUserGroup) {
 		return false
 	}
 
 	return (action == string(v1.ReadAccessPolicyAction) || action == string(v1.WriteAccessPolicyAction)) &&
 		strings.HasPrefix(resource, string(v1.DataAccessPolicyResource)+"/")
-}
-
-func IsManagedNodesUserGroup(userGroup *v1.NifiUserGroup) bool {
-	return userGroup != nil && strings.HasSuffix(userGroup.Name, ManagedNodesGroupNameSuffix)
 }
 
 func addUserGroupToAccessPolicyEntity(userGroup *v1.NifiUserGroup, entity *nigoapi.AccessPolicyEntity) {

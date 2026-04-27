@@ -110,21 +110,75 @@ func TestAddRemoveUserGroupsFromAccessPolicyEntityIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestRequiresManagedNodesHandlesUnreadyManagedGroup(t *testing.T) {
+	policy := v1.AccessPolicy{
+		Type:          v1.ComponentAccessPolicyType,
+		Action:        v1.ReadAccessPolicyAction,
+		Resource:      v1.DataAccessPolicyResource,
+		ComponentType: v1.ProcessGroupType,
+		ComponentId:   "pg-1",
+	}
+
+	if RequiresManagedNodes(&policy, nil) {
+		t.Fatal("expected false when managedNodesUserGroup is nil (not yet looked up)")
+	}
+
+	pending := nifiUserGroup("cluster.managed-nodes", "")
+	if RequiresManagedNodes(&policy, pending) {
+		t.Fatal("expected false when managedNodesUserGroup has no NiFi-side Status.Id yet")
+	}
+
+	ready := nifiUserGroup("cluster.managed-nodes", "managed-nodes-id")
+	if !RequiresManagedNodes(&policy, ready) {
+		t.Fatal("expected true once managedNodesUserGroup has been reconciled with a Status.Id")
+	}
+}
+
+func TestAddRemoveUsersFromAccessPolicyEntityIsIdempotent(t *testing.T) {
+	alice := nifiUser("alice", "alice-id")
+	bob := nifiUser("bob", "bob-id")
+	entity := &nigoapi.AccessPolicyEntity{
+		Component: &nigoapi.AccessPolicyDto{},
+	}
+
+	addRemoveUsersFromAccessPolicyEntity(
+		[]*v1.NifiUser{alice, bob, bob},
+		[]*v1.NifiUser{},
+		entity,
+	)
+	addRemoveUsersFromAccessPolicyEntity(
+		[]*v1.NifiUser{alice, bob},
+		[]*v1.NifiUser{},
+		entity,
+	)
+
+	if len(entity.Component.Users) != 2 {
+		t.Fatalf("expected 2 unique users, got %d: %#v", len(entity.Component.Users), entity.Component.Users)
+	}
+}
+
 func TestManagedNodesShouldKeepDataPolicy(t *testing.T) {
 	managedNodes := nifiUserGroup("cluster.managed-nodes", "managed-nodes-id")
 	restricted := nifiUserGroup("restricted", "restricted-id")
+	imposter := nifiUserGroup("other.managed-nodes", "imposter-id")
 
-	if !ManagedNodesShouldKeepDataPolicy(managedNodes, "read", "/data/process-groups/pg-1") {
+	if !ManagedNodesShouldKeepDataPolicy(managedNodes, managedNodes, "read", "/data/process-groups/pg-1") {
 		t.Fatal("expected managed-nodes to keep component data read policy")
 	}
-	if !ManagedNodesShouldKeepDataPolicy(managedNodes, "write", "/data/process-groups/pg-1") {
+	if !ManagedNodesShouldKeepDataPolicy(managedNodes, managedNodes, "write", "/data/process-groups/pg-1") {
 		t.Fatal("expected managed-nodes to keep component data write policy")
 	}
-	if ManagedNodesShouldKeepDataPolicy(managedNodes, "read", "/operation/process-groups/pg-1") {
+	if ManagedNodesShouldKeepDataPolicy(managedNodes, managedNodes, "read", "/operation/process-groups/pg-1") {
 		t.Fatal("did not expect managed-nodes to keep non-data policy")
 	}
-	if ManagedNodesShouldKeepDataPolicy(restricted, "read", "/data/process-groups/pg-1") {
+	if ManagedNodesShouldKeepDataPolicy(restricted, managedNodes, "read", "/data/process-groups/pg-1") {
 		t.Fatal("did not expect non-managed-nodes group to keep data policy")
+	}
+	if ManagedNodesShouldKeepDataPolicy(imposter, managedNodes, "read", "/data/process-groups/pg-1") {
+		t.Fatal("did not expect a different group with .managed-nodes suffix to keep data policy")
+	}
+	if ManagedNodesShouldKeepDataPolicy(managedNodes, nil, "read", "/data/process-groups/pg-1") {
+		t.Fatal("did not expect keep when managedNodesUserGroup is nil")
 	}
 }
 
@@ -135,6 +189,18 @@ func nifiUserGroup(name, id string) *v1.NifiUserGroup {
 			Namespace: "nifi",
 		},
 		Status: v1.NifiUserGroupStatus{
+			Id: id,
+		},
+	}
+}
+
+func nifiUser(name, id string) *v1.NifiUser {
+	return &v1.NifiUser{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "nifi",
+		},
+		Status: v1.NifiUserStatus{
 			Id: id,
 		},
 	}

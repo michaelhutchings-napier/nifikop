@@ -413,10 +413,6 @@ func (r *NifiUserGroupReconciler) updateStatus(ctx context.Context, userGroup *v
 }
 
 func (r *NifiUserGroupReconciler) lookupManagedNodesUserGroup(cluster *v1.NifiCluster) (*v1.NifiUserGroup, error) {
-	if len(cluster.Spec.Nodes) <= 1 {
-		return nil, nil
-	}
-
 	userGroup, err := k8sutil.LookupNifiUserGroup(r.Client, fmt.Sprintf("%s.managed-nodes", cluster.Name), cluster.Namespace)
 	if apierrors.IsNotFound(err) {
 		return nil, nil

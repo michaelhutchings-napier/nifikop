@@ -104,7 +104,7 @@ func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
 	for _, entity := range entity.Component.AccessPolicies {
 		contains := userGroupContainsAccessPolicy(userGroup, entity, config.RootProcessGroupId)
 		if !contains {
-			if accesspolicies.ManagedNodesShouldKeepDataPolicy(userGroup, entity.Component.Action, entity.Component.Resource) {
+			if accesspolicies.ManagedNodesShouldKeepDataPolicy(userGroup, managedNodesUserGroup, entity.Component.Action, entity.Component.Resource) {
 				continue
 			}
 			if err := accesspolicies.UpdateAccessPolicyEntity(&entity,
