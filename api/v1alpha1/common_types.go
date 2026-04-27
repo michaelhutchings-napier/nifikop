@@ -72,6 +72,9 @@ type AccessPolicyAction string
 // AccessPolicyResource represents the access policy resource.
 type AccessPolicyResource string
 
+// ManagedAccessPolicyGroup represents an operator-managed group that can be included on an access policy.
+type ManagedAccessPolicyGroup string
+
 func (r State) IsUpscale() bool {
 	return r == GracefulUpscaleRequired || r == GracefulUpscaleSucceeded || r == GracefulUpscaleRunning
 }
@@ -188,6 +191,11 @@ type AccessPolicy struct {
 	// componentId is used if the type is "component", it's allow to define the id of the component on which is the
 	// access policy
 	ComponentId string `json:"componentId,omitempty"`
+	// includeManagedGroups defines operator-managed groups that should be included on this policy in addition to
+	// the users or groups that directly reference the policy. This is useful when defining child component policies
+	// that break inheritance from the root process group.
+	// +kubebuilder:validation:items:Enum=nodes;admins;readers
+	IncludeManagedGroups []ManagedAccessPolicyGroup `json:"includeManagedGroups,omitempty"`
 }
 
 func (a *AccessPolicy) GetResource(rootProcessGroupId string) string {
@@ -215,6 +223,13 @@ const (
 	ReadAccessPolicyAction AccessPolicyAction = "read"
 	// Allows users to modify.
 	WriteAccessPolicyAction AccessPolicyAction = "write"
+
+	// Managed nodes group.
+	ManagedNodesAccessPolicyGroup ManagedAccessPolicyGroup = "nodes"
+	// Managed admins group.
+	ManagedAdminsAccessPolicyGroup ManagedAccessPolicyGroup = "admins"
+	// Managed readers group.
+	ManagedReadersAccessPolicyGroup ManagedAccessPolicyGroup = "readers"
 
 	// Global
 	// About the UI.

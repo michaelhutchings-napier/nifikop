@@ -58,7 +58,9 @@ func CreateUserGroup(userGroup *v1.NifiUserGroup,
 }
 
 func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
-	managedNodesUserGroup *v1.NifiUserGroup, config *clientconfig.NifiConfig) (*v1.NifiUserGroupStatus, error) {
+	managedUserGroups accesspolicies.ManagedUserGroups,
+	includeManagedGroupPolicies []v1.AccessPolicy,
+	config *clientconfig.NifiConfig) (*v1.NifiUserGroupStatus, error) {
 	nClient, err := common.NewClusterConnection(log, config)
 	if err != nil {
 		return nil, err
@@ -104,7 +106,8 @@ func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
 	for _, entity := range entity.Component.AccessPolicies {
 		contains := userGroupContainsAccessPolicy(userGroup, entity, config.RootProcessGroupId)
 		if !contains {
-			if accesspolicies.ManagedNodesShouldKeepDataPolicy(userGroup, managedNodesUserGroup, entity.Component.Action, entity.Component.Resource) {
+			if accesspolicies.ManagedGroupShouldKeepPolicy(userGroup, managedUserGroups, entity.Component.Action,
+				entity.Component.Resource, config.RootProcessGroupId, includeManagedGroupPolicies) {
 				continue
 			}
 			if err := accesspolicies.UpdateAccessPolicyEntity(&entity,
@@ -118,9 +121,9 @@ func SyncUserGroup(userGroup *v1.NifiUserGroup, users []*v1.NifiUser,
 	// add
 	for _, accessPolicy := range userGroup.Spec.AccessPolicies {
 		contains := UserGroupEntityContainsAccessPolicy(entity, accessPolicy, config.RootProcessGroupId)
-		if !contains || accesspolicies.RequiresManagedNodes(&accessPolicy, managedNodesUserGroup) {
-			addUserGroups := accesspolicies.WithManagedNodesForDataPolicy(&accessPolicy,
-				[]*v1.NifiUserGroup{userGroup}, managedNodesUserGroup)
+		if !contains || accesspolicies.RequiresManagedGroups(&accessPolicy, managedUserGroups) {
+			addUserGroups := accesspolicies.WithManagedGroupsForPolicy(&accessPolicy,
+				[]*v1.NifiUserGroup{userGroup}, managedUserGroups)
 			if err := accesspolicies.UpdateAccessPolicy(&accessPolicy,
 				[]*v1.NifiUser{}, []*v1.NifiUser{},
 				addUserGroups, []*v1.NifiUserGroup{}, config); err != nil {

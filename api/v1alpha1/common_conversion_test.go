@@ -355,11 +355,12 @@ func TestGetV1ParameterContextRef(t *testing.T) {
 
 func TestGetAccessPolicy(t *testing.T) {
 	ap := v1.AccessPolicy{
-		Type:          v1.ComponentAccessPolicyType,
-		Action:        v1.ReadAccessPolicyAction,
-		Resource:      v1.ComponentsAccessPolicyResource,
-		ComponentType: "component type",
-		ComponentId:   "id",
+		Type:                 v1.ComponentAccessPolicyType,
+		Action:               v1.ReadAccessPolicyAction,
+		Resource:             v1.ComponentsAccessPolicyResource,
+		ComponentType:        "component type",
+		ComponentId:          "id",
+		IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup, v1.ManagedReadersAccessPolicyGroup},
 	}
 
 	alphaAp := getAccessPolicy(ap)
@@ -367,18 +368,21 @@ func TestGetAccessPolicy(t *testing.T) {
 		string(ap.Action) != string(alphaAp.Action) ||
 		string(ap.Resource) != string(alphaAp.Resource) ||
 		ap.ComponentType != alphaAp.ComponentType ||
-		ap.ComponentId != alphaAp.ComponentId {
+		ap.ComponentId != alphaAp.ComponentId ||
+		string(ap.IncludeManagedGroups[0]) != string(alphaAp.IncludeManagedGroups[0]) ||
+		string(ap.IncludeManagedGroups[1]) != string(alphaAp.IncludeManagedGroups[1]) {
 		t.Error("Access policies not equal")
 	}
 }
 
 func TestGetV1AccessPolicy(t *testing.T) {
 	ap := AccessPolicy{
-		Type:          ComponentAccessPolicyType,
-		Action:        ReadAccessPolicyAction,
-		Resource:      ComponentsAccessPolicyResource,
-		ComponentType: "component type",
-		ComponentId:   "id",
+		Type:                 ComponentAccessPolicyType,
+		Action:               ReadAccessPolicyAction,
+		Resource:             ComponentsAccessPolicyResource,
+		ComponentType:        "component type",
+		ComponentId:          "id",
+		IncludeManagedGroups: []ManagedAccessPolicyGroup{ManagedAdminsAccessPolicyGroup, ManagedReadersAccessPolicyGroup},
 	}
 
 	v1Ap := getV1AccessPolicy(ap)
@@ -386,7 +390,9 @@ func TestGetV1AccessPolicy(t *testing.T) {
 		string(ap.Action) != string(v1Ap.Action) ||
 		string(ap.Resource) != string(v1Ap.Resource) ||
 		ap.ComponentType != v1Ap.ComponentType ||
-		ap.ComponentId != v1Ap.ComponentId {
+		ap.ComponentId != v1Ap.ComponentId ||
+		string(ap.IncludeManagedGroups[0]) != string(v1Ap.IncludeManagedGroups[0]) ||
+		string(ap.IncludeManagedGroups[1]) != string(v1Ap.IncludeManagedGroups[1]) {
 		t.Error("Access policies not equal")
 	}
 }

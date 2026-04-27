@@ -9,9 +9,16 @@ import (
 	v1 "github.com/konpyutaika/nifikop/api/v1"
 )
 
-func TestWithManagedNodesForDataPolicy(t *testing.T) {
+func TestWithManagedGroupsForPolicy(t *testing.T) {
 	restricted := nifiUserGroup("restricted", "restricted-id")
 	managedNodes := nifiUserGroup("cluster.managed-nodes", "managed-nodes-id")
+	managedAdmins := nifiUserGroup("cluster.managed-admins", "managed-admins-id")
+	managedReaders := nifiUserGroup("cluster.managed-readers", "managed-readers-id")
+	managedGroups := ManagedUserGroups{
+		Nodes:   managedNodes,
+		Admins:  managedAdmins,
+		Readers: managedReaders,
+	}
 
 	tests := []struct {
 		name       string
@@ -60,29 +67,79 @@ func TestWithManagedNodesForDataPolicy(t *testing.T) {
 			},
 			wantGroups: []string{"restricted-id"},
 		},
+		{
+			name: "component data read can explicitly include managed admins",
+			policy: v1.AccessPolicy{
+				Type:                 v1.ComponentAccessPolicyType,
+				Action:               v1.ReadAccessPolicyAction,
+				Resource:             v1.DataAccessPolicyResource,
+				ComponentType:        v1.ProcessGroupType,
+				ComponentId:          "pg-1",
+				IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup},
+			},
+			wantGroups: []string{"restricted-id", "managed-nodes-id", "managed-admins-id"},
+		},
+		{
+			name: "component data read can explicitly include managed readers",
+			policy: v1.AccessPolicy{
+				Type:                 v1.ComponentAccessPolicyType,
+				Action:               v1.ReadAccessPolicyAction,
+				Resource:             v1.DataAccessPolicyResource,
+				ComponentType:        v1.ProcessGroupType,
+				ComponentId:          "pg-1",
+				IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedReadersAccessPolicyGroup},
+			},
+			wantGroups: []string{"restricted-id", "managed-nodes-id", "managed-readers-id"},
+		},
+		{
+			name: "non-data policy can explicitly include managed admins",
+			policy: v1.AccessPolicy{
+				Type:                 v1.ComponentAccessPolicyType,
+				Action:               v1.WriteAccessPolicyAction,
+				Resource:             v1.OperationAccessPolicyResource,
+				ComponentType:        v1.ProcessGroupType,
+				ComponentId:          "pg-1",
+				IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup},
+			},
+			wantGroups: []string{"restricted-id", "managed-admins-id"},
+		},
+		{
+			name: "global policy can explicitly include managed readers",
+			policy: v1.AccessPolicy{
+				Type:                 v1.GlobalAccessPolicyType,
+				Action:               v1.ReadAccessPolicyAction,
+				Resource:             v1.CountersAccessPolicyResource,
+				IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedReadersAccessPolicyGroup},
+			},
+			wantGroups: []string{"restricted-id", "managed-readers-id"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			groups := WithManagedNodesForDataPolicy(&tt.policy, []*v1.NifiUserGroup{restricted}, managedNodes)
+			groups := WithManagedGroupsForPolicy(&tt.policy, []*v1.NifiUserGroup{restricted}, managedGroups)
 			assertUserGroupIds(t, groups, tt.wantGroups)
 		})
 	}
 }
 
-func TestWithManagedNodesForDataPolicyDoesNotDuplicateManagedNodes(t *testing.T) {
+func TestWithManagedGroupsForPolicyDoesNotDuplicateManagedNodes(t *testing.T) {
 	restricted := nifiUserGroup("restricted", "restricted-id")
 	managedNodes := nifiUserGroup("cluster.managed-nodes", "managed-nodes-id")
 	policy := v1.AccessPolicy{
-		Type:          v1.ComponentAccessPolicyType,
-		Action:        v1.ReadAccessPolicyAction,
-		Resource:      v1.DataAccessPolicyResource,
-		ComponentType: v1.ProcessGroupType,
-		ComponentId:   "pg-1",
+		Type:                 v1.ComponentAccessPolicyType,
+		Action:               v1.ReadAccessPolicyAction,
+		Resource:             v1.DataAccessPolicyResource,
+		ComponentType:        v1.ProcessGroupType,
+		ComponentId:          "pg-1",
+		IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedNodesAccessPolicyGroup},
+	}
+	managedGroups := ManagedUserGroups{
+		Nodes: managedNodes,
 	}
 
-	groups := WithManagedNodesForDataPolicy(&policy, []*v1.NifiUserGroup{restricted, managedNodes}, managedNodes)
-	groups = WithManagedNodesForDataPolicy(&policy, groups, managedNodes)
+	groups := WithManagedGroupsForPolicy(&policy, []*v1.NifiUserGroup{restricted, managedNodes}, managedGroups)
+	groups = WithManagedGroupsForPolicy(&policy, groups, managedGroups)
 
 	assertUserGroupIds(t, groups, []string{"restricted-id", "managed-nodes-id"})
 }
@@ -134,6 +191,30 @@ func TestRequiresManagedNodesHandlesUnreadyManagedGroup(t *testing.T) {
 	}
 }
 
+func TestRequiresManagedGroupsHandlesExplicitManagedGroups(t *testing.T) {
+	managedGroups := ManagedUserGroups{
+		Nodes:   nifiUserGroup("cluster.managed-nodes", "managed-nodes-id"),
+		Admins:  nifiUserGroup("cluster.managed-admins", "managed-admins-id"),
+		Readers: nifiUserGroup("cluster.managed-readers", "managed-readers-id"),
+	}
+
+	operationPolicy := v1.AccessPolicy{
+		Type:          v1.ComponentAccessPolicyType,
+		Action:        v1.WriteAccessPolicyAction,
+		Resource:      v1.OperationAccessPolicyResource,
+		ComponentType: v1.ProcessGroupType,
+		ComponentId:   "pg-1",
+	}
+	if RequiresManagedGroups(&operationPolicy, managedGroups) {
+		t.Fatal("did not expect managed groups for non-data policy without includeManagedGroups")
+	}
+
+	operationPolicy.IncludeManagedGroups = []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup}
+	if !RequiresManagedGroups(&operationPolicy, managedGroups) {
+		t.Fatal("expected explicit includeManagedGroups to require policy reconciliation")
+	}
+}
+
 func TestAddRemoveUsersFromAccessPolicyEntityIsIdempotent(t *testing.T) {
 	alice := nifiUser("alice", "alice-id")
 	bob := nifiUser("bob", "bob-id")
@@ -179,6 +260,37 @@ func TestManagedNodesShouldKeepDataPolicy(t *testing.T) {
 	}
 	if ManagedNodesShouldKeepDataPolicy(managedNodes, nil, "read", "/data/process-groups/pg-1") {
 		t.Fatal("did not expect keep when managedNodesUserGroup is nil")
+	}
+}
+
+func TestManagedGroupShouldKeepPolicy(t *testing.T) {
+	managedGroups := ManagedUserGroups{
+		Nodes:   nifiUserGroup("cluster.managed-nodes", "managed-nodes-id"),
+		Admins:  nifiUserGroup("cluster.managed-admins", "managed-admins-id"),
+		Readers: nifiUserGroup("cluster.managed-readers", "managed-readers-id"),
+	}
+	includeManagedGroupPolicies := []v1.AccessPolicy{
+		{
+			Type:                 v1.ComponentAccessPolicyType,
+			Action:               v1.ReadAccessPolicyAction,
+			Resource:             v1.DataAccessPolicyResource,
+			ComponentType:        v1.ProcessGroupType,
+			ComponentId:          "pg-1",
+			IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup},
+		},
+	}
+
+	if !ManagedGroupShouldKeepPolicy(managedGroups.Admins, managedGroups, "read", "/data/process-groups/pg-1", "root", includeManagedGroupPolicies) {
+		t.Fatal("expected managed-admins to keep explicitly included policy")
+	}
+	if ManagedGroupShouldKeepPolicy(managedGroups.Readers, managedGroups, "read", "/data/process-groups/pg-1", "root", includeManagedGroupPolicies) {
+		t.Fatal("did not expect managed-readers to keep policy that only includes managed-admins")
+	}
+	if ManagedGroupShouldKeepPolicy(managedGroups.Admins, managedGroups, "write", "/data/process-groups/pg-1", "root", includeManagedGroupPolicies) {
+		t.Fatal("did not expect managed-admins to keep policy with different action")
+	}
+	if !ManagedGroupShouldKeepPolicy(managedGroups.Nodes, managedGroups, "read", "/data/process-groups/pg-2", "root", nil) {
+		t.Fatal("expected managed-nodes to keep component data read policy for queue replication")
 	}
 }
 

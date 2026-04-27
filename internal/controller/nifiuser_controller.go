@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
+	"github.com/konpyutaika/nifikop/pkg/clientwrappers/accesspolicies"
 	usercli "github.com/konpyutaika/nifikop/pkg/clientwrappers/user"
 	"github.com/konpyutaika/nifikop/pkg/errorfactory"
 	"github.com/konpyutaika/nifikop/pkg/k8sutil"
@@ -331,11 +332,11 @@ func (r *NifiUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Sync user resource with NiFi side component
 	r.Recorder.Event(instance, corev1.EventTypeNormal, "Synchronizing",
 		fmt.Sprintf("Synchronizing user %s", instance.Name))
-	managedNodesUserGroup, err := r.lookupManagedNodesUserGroup(cluster)
+	managedUserGroups, err := r.lookupManagedUserGroups(cluster)
 	if err != nil {
-		return RequeueWithError(r.Log, "failed to lookup managed nodes group for user "+instance.Name, err)
+		return RequeueWithError(r.Log, "failed to lookup managed groups for user "+instance.Name, err)
 	}
-	status, err := usercli.SyncUser(instance, clientConfig, managedNodesUserGroup)
+	status, err := usercli.SyncUser(instance, clientConfig, managedUserGroups)
 	if err != nil {
 		return RequeueWithError(r.Log, "failed to sync NifiUser "+instance.Name, err)
 	}
@@ -458,10 +459,6 @@ func (r *NifiUserReconciler) updateStatus(ctx context.Context, user *v1.NifiUser
 	return nil
 }
 
-func (r *NifiUserReconciler) lookupManagedNodesUserGroup(cluster *v1.NifiCluster) (*v1.NifiUserGroup, error) {
-	userGroup, err := k8sutil.LookupNifiUserGroup(r.Client, fmt.Sprintf("%s.managed-nodes", cluster.Name), cluster.Namespace)
-	if apierrors.IsNotFound(err) {
-		return nil, nil
-	}
-	return userGroup, err
+func (r *NifiUserReconciler) lookupManagedUserGroups(cluster *v1.NifiCluster) (accesspolicies.ManagedUserGroups, error) {
+	return lookupManagedUserGroups(r.Client, cluster)
 }

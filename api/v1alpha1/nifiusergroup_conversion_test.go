@@ -77,11 +77,12 @@ func createNifiUserGroup() *NifiUserGroup {
 			},
 			AccessPolicies: []AccessPolicy{
 				{
-					Type:          ComponentAccessPolicyType,
-					Action:        ReadAccessPolicyAction,
-					Resource:      ComponentsAccessPolicyResource,
-					ComponentType: "type",
-					ComponentId:   "id",
+					Type:                 ComponentAccessPolicyType,
+					Action:               ReadAccessPolicyAction,
+					Resource:             ComponentsAccessPolicyResource,
+					ComponentType:        "type",
+					ComponentId:          "id",
+					IncludeManagedGroups: []ManagedAccessPolicyGroup{ManagedAdminsAccessPolicyGroup},
 				},
 			},
 		},

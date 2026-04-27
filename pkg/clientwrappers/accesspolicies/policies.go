@@ -15,6 +15,12 @@ import (
 
 var log = common.CustomLogger().Named("accesspolicies-method")
 
+type ManagedUserGroups struct {
+	Nodes   *v1.NifiUserGroup
+	Admins  *v1.NifiUserGroup
+	Readers *v1.NifiUserGroup
+}
+
 func ExistAccessPolicies(accessPolicy *v1.AccessPolicy, config *clientconfig.NifiConfig) (bool, error) {
 	nClient, err := common.NewClusterConnection(log, config)
 	if err != nil {
@@ -200,21 +206,41 @@ func addRemoveUsersFromAccessPolicyEntity(
 	entity.Component.Users = usersAccessPolicy
 }
 
-func WithManagedNodesForDataPolicy(
+func WithManagedGroupsForPolicy(
 	accessPolicy *v1.AccessPolicy,
 	userGroups []*v1.NifiUserGroup,
-	managedNodesUserGroup *v1.NifiUserGroup) []*v1.NifiUserGroup {
-	if !RequiresManagedNodes(accessPolicy, managedNodesUserGroup) {
-		return userGroups
+	managedUserGroups ManagedUserGroups) []*v1.NifiUserGroup {
+	userGroups = appendManagedGroup(userGroups, managedUserGroups.Nodes, RequiresManagedNodes(accessPolicy, managedUserGroups.Nodes))
+
+	for _, group := range accessPolicy.IncludeManagedGroups {
+		switch group {
+		case v1.ManagedNodesAccessPolicyGroup:
+			userGroups = appendManagedGroup(userGroups, managedUserGroups.Nodes, true)
+		case v1.ManagedAdminsAccessPolicyGroup:
+			userGroups = appendManagedGroup(userGroups, managedUserGroups.Admins, true)
+		case v1.ManagedReadersAccessPolicyGroup:
+			userGroups = appendManagedGroup(userGroups, managedUserGroups.Readers, true)
+		}
 	}
 
+	return userGroups
+}
+
+func RequiresManagedGroups(accessPolicy *v1.AccessPolicy, managedUserGroups ManagedUserGroups) bool {
+	return len(WithManagedGroupsForPolicy(accessPolicy, []*v1.NifiUserGroup{}, managedUserGroups)) > 0
+}
+
+func appendManagedGroup(userGroups []*v1.NifiUserGroup, managedGroup *v1.NifiUserGroup, shouldAppend bool) []*v1.NifiUserGroup {
+	if !shouldAppend || managedGroup == nil || managedGroup.Status.Id == "" {
+		return userGroups
+	}
 	for _, userGroup := range userGroups {
-		if userGroupKey(userGroup) == userGroupKey(managedNodesUserGroup) {
+		if userGroupKey(userGroup) == userGroupKey(managedGroup) {
 			return userGroups
 		}
 	}
 
-	return append(userGroups, managedNodesUserGroup)
+	return append(userGroups, managedGroup)
 }
 
 func RequiresManagedNodes(accessPolicy *v1.AccessPolicy, managedNodesUserGroup *v1.NifiUserGroup) bool {
@@ -237,6 +263,45 @@ func ManagedNodesShouldKeepDataPolicy(userGroup, managedNodesUserGroup *v1.NifiU
 
 	return (action == string(v1.ReadAccessPolicyAction) || action == string(v1.WriteAccessPolicyAction)) &&
 		strings.HasPrefix(resource, string(v1.DataAccessPolicyResource)+"/")
+}
+
+func ManagedGroupShouldKeepPolicy(userGroup *v1.NifiUserGroup, managedUserGroups ManagedUserGroups,
+	action, resource, rootProcessGroupId string, includeManagedGroupPolicies []v1.AccessPolicy) bool {
+	if ManagedNodesShouldKeepDataPolicy(userGroup, managedUserGroups.Nodes, action, resource) {
+		return true
+	}
+
+	for _, accessPolicy := range includeManagedGroupPolicies {
+		if action != string(accessPolicy.Action) || resource != accessPolicy.GetResource(rootProcessGroupId) {
+			continue
+		}
+		if accessPolicyIncludesManagedUserGroup(&accessPolicy, userGroup, managedUserGroups) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func accessPolicyIncludesManagedUserGroup(accessPolicy *v1.AccessPolicy, userGroup *v1.NifiUserGroup,
+	managedUserGroups ManagedUserGroups) bool {
+	for _, group := range accessPolicy.IncludeManagedGroups {
+		switch group {
+		case v1.ManagedNodesAccessPolicyGroup:
+			if userGroupKey(userGroup) == userGroupKey(managedUserGroups.Nodes) {
+				return true
+			}
+		case v1.ManagedAdminsAccessPolicyGroup:
+			if userGroupKey(userGroup) == userGroupKey(managedUserGroups.Admins) {
+				return true
+			}
+		case v1.ManagedReadersAccessPolicyGroup:
+			if userGroupKey(userGroup) == userGroupKey(managedUserGroups.Readers) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func addUserGroupToAccessPolicyEntity(userGroup *v1.NifiUserGroup, entity *nigoapi.AccessPolicyEntity) {

@@ -38,6 +38,14 @@ spec:
                       type: string
                     componentType:
                       type: string
+                    includeManagedGroups:
+                      items:
+                        enum:
+                        - nodes
+                        - admins
+                        - readers
+                        type: string
+                      type: array
                     resource:
                       enum:
                       - /system
@@ -133,6 +141,14 @@ spec:
                       type: string
                     componentType:
                       type: string
+                    includeManagedGroups:
+                      items:
+                        enum:
+                        - nodes
+                        - admins
+                        - readers
+                        type: string
+                      type: array
                     resource:
                       enum:
                       - /system

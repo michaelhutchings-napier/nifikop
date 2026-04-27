@@ -96,21 +96,33 @@ func getParameterContextRef(src v1.ParameterContextReference) ParameterContextRe
 
 // AccessPolicy.
 func getV1AccessPolicy(src AccessPolicy) v1.AccessPolicy {
+	includeManagedGroups := make([]v1.ManagedAccessPolicyGroup, len(src.IncludeManagedGroups))
+	for i, group := range src.IncludeManagedGroups {
+		includeManagedGroups[i] = v1.ManagedAccessPolicyGroup(group)
+	}
+
 	return v1.AccessPolicy{
-		Type:          v1.AccessPolicyType(src.Type),
-		Action:        v1.AccessPolicyAction(src.Action),
-		Resource:      v1.AccessPolicyResource(src.Resource),
-		ComponentType: src.ComponentType,
-		ComponentId:   src.ComponentId,
+		Type:                 v1.AccessPolicyType(src.Type),
+		Action:               v1.AccessPolicyAction(src.Action),
+		Resource:             v1.AccessPolicyResource(src.Resource),
+		ComponentType:        src.ComponentType,
+		ComponentId:          src.ComponentId,
+		IncludeManagedGroups: includeManagedGroups,
 	}
 }
 
 func getAccessPolicy(src v1.AccessPolicy) AccessPolicy {
+	includeManagedGroups := make([]ManagedAccessPolicyGroup, len(src.IncludeManagedGroups))
+	for i, group := range src.IncludeManagedGroups {
+		includeManagedGroups[i] = ManagedAccessPolicyGroup(group)
+	}
+
 	return AccessPolicy{
-		Type:          AccessPolicyType(src.Type),
-		Action:        AccessPolicyAction(src.Action),
-		Resource:      AccessPolicyResource(src.Resource),
-		ComponentType: src.ComponentType,
-		ComponentId:   src.ComponentId,
+		Type:                 AccessPolicyType(src.Type),
+		Action:               AccessPolicyAction(src.Action),
+		Resource:             AccessPolicyResource(src.Resource),
+		ComponentType:        src.ComponentType,
+		ComponentId:          src.ComponentId,
+		IncludeManagedGroups: includeManagedGroups,
 	}
 }

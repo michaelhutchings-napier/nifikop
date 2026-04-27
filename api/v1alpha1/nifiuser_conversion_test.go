@@ -60,8 +60,14 @@ func accessPoliciesEqual(ap1 []AccessPolicy, ap2 []v1.AccessPolicy) bool {
 			string(ap.Resource) != string(ap2[i].Resource) ||
 			string(ap.Type) != string(ap2[i].Type) ||
 			ap.ComponentId != ap2[i].ComponentId ||
-			ap.ComponentType != ap2[i].ComponentType {
+			ap.ComponentType != ap2[i].ComponentType ||
+			len(ap.IncludeManagedGroups) != len(ap2[i].IncludeManagedGroups) {
 			return false
+		}
+		for j, group := range ap.IncludeManagedGroups {
+			if string(group) != string(ap2[i].IncludeManagedGroups[j]) {
+				return false
+			}
 		}
 	}
 	return true
@@ -86,11 +92,12 @@ func createNifiUser() *NifiUser {
 			CreateCert: &createCert,
 			AccessPolicies: []AccessPolicy{
 				{
-					Type:          ComponentAccessPolicyType,
-					Action:        ReadAccessPolicyAction,
-					Resource:      ComponentsAccessPolicyResource,
-					ComponentType: "type",
-					ComponentId:   "id",
+					Type:                 ComponentAccessPolicyType,
+					Action:               ReadAccessPolicyAction,
+					Resource:             ComponentsAccessPolicyResource,
+					ComponentType:        "type",
+					ComponentId:          "id",
+					IncludeManagedGroups: []ManagedAccessPolicyGroup{ManagedAdminsAccessPolicyGroup},
 				},
 			},
 		},

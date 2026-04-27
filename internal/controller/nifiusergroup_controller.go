@@ -34,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
+	"github.com/konpyutaika/nifikop/pkg/clientwrappers/accesspolicies"
 	"github.com/konpyutaika/nifikop/pkg/clientwrappers/usergroup"
 	"github.com/konpyutaika/nifikop/pkg/k8sutil"
 	"github.com/konpyutaika/nifikop/pkg/nificlient/config"
@@ -289,11 +290,15 @@ func (r *NifiUserGroupReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Sync UserGroup resource with NiFi side component
 	r.Recorder.Event(instance, corev1.EventTypeNormal, "Synchronizing",
 		fmt.Sprintf("Synchronizing user group %s", instance.Name))
-	managedNodesUserGroup, err := r.lookupManagedNodesUserGroup(cluster)
+	managedUserGroups, err := r.lookupManagedUserGroups(cluster)
 	if err != nil {
-		return RequeueWithError(r.Log, "failed to lookup managed nodes group for user group "+instance.Name, err)
+		return RequeueWithError(r.Log, "failed to lookup managed groups for user group "+instance.Name, err)
 	}
-	status, err := usergroup.SyncUserGroup(instance, users, managedNodesUserGroup, clientConfig)
+	includeManagedGroupPolicies, err := r.includeManagedGroupAccessPolicies(ctx, cluster)
+	if err != nil {
+		return RequeueWithError(r.Log, "failed to lookup access policies that include managed groups for user group "+instance.Name, err)
+	}
+	status, err := usergroup.SyncUserGroup(instance, users, managedUserGroups, includeManagedGroupPolicies, clientConfig)
 	if err != nil {
 		r.Recorder.Event(instance, corev1.EventTypeNormal, "SynchronizingFailed",
 			fmt.Sprintf("Synchronizing user group %s failed", instance.Name))
@@ -412,10 +417,6 @@ func (r *NifiUserGroupReconciler) updateStatus(ctx context.Context, userGroup *v
 	return nil
 }
 
-func (r *NifiUserGroupReconciler) lookupManagedNodesUserGroup(cluster *v1.NifiCluster) (*v1.NifiUserGroup, error) {
-	userGroup, err := k8sutil.LookupNifiUserGroup(r.Client, fmt.Sprintf("%s.managed-nodes", cluster.Name), cluster.Namespace)
-	if apierrors.IsNotFound(err) {
-		return nil, nil
-	}
-	return userGroup, err
+func (r *NifiUserGroupReconciler) lookupManagedUserGroups(cluster *v1.NifiCluster) (accesspolicies.ManagedUserGroups, error) {
+	return lookupManagedUserGroups(r.Client, cluster)
 }
