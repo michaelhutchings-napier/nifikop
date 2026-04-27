@@ -52,3 +52,43 @@ It's required to create the resource even if the user is already declared in NiF
 Like for `NifiUser` you can declare a list of [AccessPolicies](../../5_references/2_nifi_user#accesspolicy) to give a list of access to your user.
 
 In the example above we are giving to users `nc-0-node.nc-headless.nifikop.svc.cluster.local` and `nc-controller.nifikop.mgt.cluster.local` the right to view the counters information.
+
+## Preserving managed access on restricted component policies
+
+When you define a component-level policy on a child process group, NiFi treats that policy as an override of the inherited policy from the root process group. If the child policy targets `/data`, this can remove inherited access for operator-managed groups such as managed admins and managed readers.
+
+NiFiKop automatically includes the managed nodes group on component `/data` read and write policies when it exists. This is required by Apache NiFi in clustered deployments so node-to-node request replication can list or delete queued FlowFiles.
+
+Managed admins and managed readers are more sensitive because `/data` grants access to FlowFile metadata and content. Add them explicitly with `includeManagedGroups` when they should retain access to a restricted child policy:
+
+```yaml
+apiVersion: nifi.konpyutaika.com/v1
+kind: NifiUserGroup
+metadata:
+  name: restricted-process-group-users
+spec:
+  clusterRef:
+    name: nc
+    namespace: nifikop
+  usersRef:
+    - name: restricted-user
+      namespace: nifikop
+  accessPolicies:
+    - type: component
+      componentType: process-groups
+      componentId: <process-group-id>
+      resource: /data
+      action: read
+      includeManagedGroups:
+        - admins
+        - readers
+    - type: component
+      componentType: process-groups
+      componentId: <process-group-id>
+      resource: /data
+      action: write
+      includeManagedGroups:
+        - admins
+```
+
+Supported values are `nodes`, `admins`, and `readers`. `nodes` may be omitted for component `/data` read and write policies because NiFiKop adds it automatically for queue operations.

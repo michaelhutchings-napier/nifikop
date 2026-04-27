@@ -1,0 +1,33 @@
+apiVersion: nifi.konpyutaika.com/v1
+kind: NifiUserGroup
+metadata:
+  name: restricted-process-group-users
+spec:
+  clusterRef:
+    name: nc
+    namespace: nifikop
+  usersRef:
+    - name: restricted-user
+      namespace: nifikop
+  accessPolicies:
+    # NiFiKop automatically includes managed-nodes on component /data read and write
+    # policies when the managed-nodes group exists. This is required for clustered
+    # List Queue and Delete Queue requests.
+    - type: component
+      componentType: process-groups
+      componentId: <process-group-id>
+      resource: /data
+      action: read
+      includeManagedGroups:
+        # Preserve inherited managed-admins and managed-readers access explicitly.
+        - admins
+        - readers
+    - type: component
+      componentType: process-groups
+      componentId: <process-group-id>
+      resource: /data
+      action: write
+      includeManagedGroups:
+        # Preserve managed-admins write access explicitly. Add readers only if they
+        # should also be able to modify data on this process group.
+        - admins

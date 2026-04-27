@@ -45,6 +45,24 @@ And create and manage two groups:
 
 And the rest of the stuff will be reconciled and managed as described for `NifiUsers` and `NifiUserGroups`.
 
+When a user-defined access policy is created on a child component, NiFi breaks inheritance from the parent policy for that resource. For `/data` policies this means managed admins and managed readers do not automatically keep inherited access to the child process group.
+
+NiFiKop always keeps managed nodes on component `/data` read and write policies when the managed nodes group exists, because Apache NiFi requires node identities on those policies for clustered queue listing and queue deletion. Managed admins and managed readers must be included explicitly on the policy:
+
+```yaml
+accessPolicies:
+  - type: component
+    componentType: process-groups
+    componentId: <process-group-id>
+    resource: /data
+    action: read
+    includeManagedGroups:
+      - admins
+      - readers
+```
+
+This keeps `/data` access explicit while allowing restricted child policies to preserve the managed groups that should still have access.
+
 :::note
 There is one more group that is created and managed by the operator, this is the **managed-nodes** group, for each node a `NifiUser` is created, and we automatically add them to this group to give them the right list of accesses.
 

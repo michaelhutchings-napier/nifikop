@@ -62,6 +62,13 @@ spec:
 |resource|[AccessPolicyResource](#accesspolicyresource)| defines the kind of resource targeted by this access policies, please refer to the following page: https://nifi.apache.org/docs/nifi-docs/html/administration-guide.html#access-policies |Yes| - |
 |componentType|string| used if the type is "component", it allows to define the kind of component on which is the access policy. |No| - |
 |componentId|string| used if the type is "component", it allows to define the id of the component on which is the access policy. |No| - |
+|includeManagedGroups|\[&nbsp;\][ManagedAccessPolicyGroup](#managedaccesspolicygroup)| operator-managed groups to include on this policy in addition to the user or group that directly references it. This is useful when defining child component policies that break inheritance from the root process group. |No| [] |
+
+:::note
+For component `/data` read and write policies, NiFiKop automatically includes the `nodes` managed group when it exists. This is required by Apache NiFi for queue listing and queue deletion in clustered deployments.
+
+Use `includeManagedGroups` only for managed groups that should explicitly retain access after a child component policy breaks inheritance. `admins` and `readers` are not added by default because `/data` policies allow access to FlowFile metadata and content.
+:::
 
 ## AccessPolicyType
 
@@ -76,6 +83,14 @@ spec:
 |-----|----|------------|
 |ReadAccessPolicyAction|read|Allows users to view|
 |WriteAccessPolicyAction|write|Allows users to modify|
+
+## ManagedAccessPolicyGroup
+
+|Name|Value|Description|
+|-----|----|------------|
+|ManagedNodesAccessPolicyGroup|nodes|The operator-managed group containing NiFi node identities.|
+|ManagedAdminsAccessPolicyGroup|admins|The operator-managed admin group for the cluster.|
+|ManagedReadersAccessPolicyGroup|readers|The operator-managed reader group for the cluster.|
 
 ## AccessPolicyResource
 
@@ -98,4 +113,3 @@ spec:
 |DataAccessPolicyResource|/data|About metadata and content for this component in flowfile queues in outbound connections and through provenance events|
 |PoliciesComponentAccessPolicyResource|/policies|-|
 |DataTransferAccessPolicyResource|/data-transfer|Allows a port to receive data from NiFi instances|
-

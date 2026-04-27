@@ -2,6 +2,7 @@
 resources:
 - nifi_v1_nificluster.yaml
 - nifi_v1_nifiusergroup.yaml
+- nifi_v1_nifiusergroup_restricted_data.yaml
 - nifi_v1_nifidataflow.yaml
 - nifi_v1_nifiparametercontext.yaml
 - nifi_v1_nifinodegroupautoscaler.yaml
