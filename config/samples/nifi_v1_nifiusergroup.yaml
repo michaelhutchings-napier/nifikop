@@ -27,6 +27,6 @@ spec:
 #      # componentId is used if the type is "component", it's allow to define the id of the component on which is the
 #      # access policy
 #      componentId: ""
-#      # includeManagedGroups optionally preserves access for operator-managed groups when this policy breaks inheritance.
-#      # Supported values are "nodes", "admins", and "readers".
+#      # includeManagedGroups optionally preserves managed-admins or managed-readers access on component /data read/write policies.
+#      # Supported values are "admins" and "readers". managed-nodes is added automatically where required for queues.
 #      includeManagedGroups: []

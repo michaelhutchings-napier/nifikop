@@ -59,7 +59,7 @@ When you define a component-level policy on a child process group, NiFi treats t
 
 NiFiKop automatically includes the managed nodes group on component `/data` read and write policies when it exists. This is required by Apache NiFi in clustered deployments so node-to-node request replication can list or delete queued FlowFiles.
 
-Managed admins and managed readers are more sensitive because `/data` grants access to FlowFile metadata and content. Add them explicitly with `includeManagedGroups` when they should retain access to a restricted child policy:
+Managed admins and managed readers are more sensitive because `/data` grants access to FlowFile metadata and content. `readers` on `/data` read can view queued FlowFile data, and `admins` on `/data` write can empty or drop queues. Add them explicitly with `includeManagedGroups` only when they should retain access to a restricted child `/data` policy:
 
 ```yaml
 apiVersion: nifi.konpyutaika.com/v1
@@ -91,4 +91,4 @@ spec:
         - admins
 ```
 
-Supported values are `nodes`, `admins`, and `readers`. `nodes` may be omitted for component `/data` read and write policies because NiFiKop adds it automatically for queue operations.
+Supported values are `admins` and `readers`. `managed-nodes` is not configured through `includeManagedGroups`; NiFiKop adds it automatically to component `/data` read and write policies for queue operations.

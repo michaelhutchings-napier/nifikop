@@ -523,8 +523,8 @@ users: []
   #       # These should all be used if type is "component"
   #       componentType: ""
   #       componentId: ""
-  #       # Optionally preserve explicit access for operator-managed groups when this policy breaks inheritance.
-  #       # Supported values are "nodes", "admins", and "readers".
+  #       # Optionally preserve managed-admins or managed-readers access on component /data read/write policies.
+  #       # Supported values are "admins" and "readers". managed-nodes is added automatically where required for queues.
   #       includeManagedGroups: []
 
 # -- Configure user groups. Each will result in the creation of a `NiFiUserGroup` CRD in k8s, which the operator
@@ -546,8 +546,8 @@ userGroups: []
   #       # These should all be used if type is "component"
   #       componentType: ""
   #       componentId: ""
-  #       # Optionally preserve explicit access for operator-managed groups when this policy breaks inheritance.
-  #       # Supported values are "nodes", "admins", and "readers".
+  #       # Optionally preserve managed-admins or managed-readers access on component /data read/write policies.
+  #       # Supported values are "admins" and "readers". managed-nodes is added automatically where required for queues.
   #       includeManagedGroups: []
 
 # -- A list of extra Kubernetes manifest with Helm template support, to apply

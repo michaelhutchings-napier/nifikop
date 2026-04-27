@@ -212,10 +212,12 @@ func WithManagedGroupsForPolicy(
 	managedUserGroups ManagedUserGroups) []*v1.NifiUserGroup {
 	userGroups = appendManagedGroup(userGroups, managedUserGroups.Nodes, RequiresManagedNodes(accessPolicy, managedUserGroups.Nodes))
 
+	if !SupportsExplicitManagedGroups(accessPolicy) {
+		return userGroups
+	}
+
 	for _, group := range accessPolicy.IncludeManagedGroups {
 		switch group {
-		case v1.ManagedNodesAccessPolicyGroup:
-			userGroups = appendManagedGroup(userGroups, managedUserGroups.Nodes, true)
 		case v1.ManagedAdminsAccessPolicyGroup:
 			userGroups = appendManagedGroup(userGroups, managedUserGroups.Admins, true)
 		case v1.ManagedReadersAccessPolicyGroup:
@@ -228,6 +230,12 @@ func WithManagedGroupsForPolicy(
 
 func RequiresManagedGroups(accessPolicy *v1.AccessPolicy, managedUserGroups ManagedUserGroups) bool {
 	return len(WithManagedGroupsForPolicy(accessPolicy, []*v1.NifiUserGroup{}, managedUserGroups)) > 0
+}
+
+func SupportsExplicitManagedGroups(accessPolicy *v1.AccessPolicy) bool {
+	return accessPolicy.Type == v1.ComponentAccessPolicyType &&
+		accessPolicy.Resource == v1.DataAccessPolicyResource &&
+		(accessPolicy.Action == v1.ReadAccessPolicyAction || accessPolicy.Action == v1.WriteAccessPolicyAction)
 }
 
 func appendManagedGroup(userGroups []*v1.NifiUserGroup, managedGroup *v1.NifiUserGroup, shouldAppend bool) []*v1.NifiUserGroup {
@@ -272,6 +280,9 @@ func ManagedGroupShouldKeepPolicy(userGroup *v1.NifiUserGroup, managedUserGroups
 	}
 
 	for _, accessPolicy := range includeManagedGroupPolicies {
+		if !SupportsExplicitManagedGroups(&accessPolicy) {
+			continue
+		}
 		if action != string(accessPolicy.Action) || resource != accessPolicy.GetResource(rootProcessGroupId) {
 			continue
 		}
@@ -287,10 +298,6 @@ func accessPolicyIncludesManagedUserGroup(accessPolicy *v1.AccessPolicy, userGro
 	managedUserGroups ManagedUserGroups) bool {
 	for _, group := range accessPolicy.IncludeManagedGroups {
 		switch group {
-		case v1.ManagedNodesAccessPolicyGroup:
-			if userGroupKey(userGroup) == userGroupKey(managedUserGroups.Nodes) {
-				return true
-			}
 		case v1.ManagedAdminsAccessPolicyGroup:
 			if userGroupKey(userGroup) == userGroupKey(managedUserGroups.Admins) {
 				return true

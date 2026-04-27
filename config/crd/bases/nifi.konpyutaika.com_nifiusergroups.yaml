@@ -41,7 +41,6 @@ spec:
                     includeManagedGroups:
                       items:
                         enum:
-                        - nodes
                         - admins
                         - readers
                         type: string
@@ -76,6 +75,12 @@ spec:
                   - resource
                   - type
                   type: object
+                  x-kubernetes-validations:
+                  - message: includeManagedGroups is only supported for component
+                      /data read/write policies
+                    rule: '!has(self.includeManagedGroups) || size(self.includeManagedGroups)
+                      == 0 || (self.type == ''component'' && self.resource == ''/data''
+                      && (self.action == ''read'' || self.action == ''write''))'
                 type: array
               clusterRef:
                 properties:
@@ -145,7 +150,6 @@ spec:
                     includeManagedGroups:
                       items:
                         enum:
-                        - nodes
                         - admins
                         - readers
                         type: string
@@ -180,6 +184,12 @@ spec:
                   - resource
                   - type
                   type: object
+                  x-kubernetes-validations:
+                  - message: includeManagedGroups is only supported for component
+                      /data read/write policies
+                    rule: '!has(self.includeManagedGroups) || size(self.includeManagedGroups)
+                      == 0 || (self.type == ''component'' && self.resource == ''/data''
+                      && (self.action == ''read'' || self.action == ''write''))'
                 type: array
               clusterRef:
                 properties:

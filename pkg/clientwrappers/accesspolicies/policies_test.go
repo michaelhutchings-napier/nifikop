@@ -92,7 +92,7 @@ func TestWithManagedGroupsForPolicy(t *testing.T) {
 			wantGroups: []string{"restricted-id", "managed-nodes-id", "managed-readers-id"},
 		},
 		{
-			name: "non-data policy can explicitly include managed admins",
+			name: "non-data policy ignores explicit managed admins",
 			policy: v1.AccessPolicy{
 				Type:                 v1.ComponentAccessPolicyType,
 				Action:               v1.WriteAccessPolicyAction,
@@ -101,17 +101,17 @@ func TestWithManagedGroupsForPolicy(t *testing.T) {
 				ComponentId:          "pg-1",
 				IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup},
 			},
-			wantGroups: []string{"restricted-id", "managed-admins-id"},
+			wantGroups: []string{"restricted-id"},
 		},
 		{
-			name: "global policy can explicitly include managed readers",
+			name: "global policy ignores explicit managed readers",
 			policy: v1.AccessPolicy{
 				Type:                 v1.GlobalAccessPolicyType,
 				Action:               v1.ReadAccessPolicyAction,
 				Resource:             v1.CountersAccessPolicyResource,
 				IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedReadersAccessPolicyGroup},
 			},
-			wantGroups: []string{"restricted-id", "managed-readers-id"},
+			wantGroups: []string{"restricted-id"},
 		},
 	}
 
@@ -127,12 +127,11 @@ func TestWithManagedGroupsForPolicyDoesNotDuplicateManagedNodes(t *testing.T) {
 	restricted := nifiUserGroup("restricted", "restricted-id")
 	managedNodes := nifiUserGroup("cluster.managed-nodes", "managed-nodes-id")
 	policy := v1.AccessPolicy{
-		Type:                 v1.ComponentAccessPolicyType,
-		Action:               v1.ReadAccessPolicyAction,
-		Resource:             v1.DataAccessPolicyResource,
-		ComponentType:        v1.ProcessGroupType,
-		ComponentId:          "pg-1",
-		IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedNodesAccessPolicyGroup},
+		Type:          v1.ComponentAccessPolicyType,
+		Action:        v1.ReadAccessPolicyAction,
+		Resource:      v1.DataAccessPolicyResource,
+		ComponentType: v1.ProcessGroupType,
+		ComponentId:   "pg-1",
 	}
 	managedGroups := ManagedUserGroups{
 		Nodes: managedNodes,
@@ -210,8 +209,8 @@ func TestRequiresManagedGroupsHandlesExplicitManagedGroups(t *testing.T) {
 	}
 
 	operationPolicy.IncludeManagedGroups = []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup}
-	if !RequiresManagedGroups(&operationPolicy, managedGroups) {
-		t.Fatal("expected explicit includeManagedGroups to require policy reconciliation")
+	if RequiresManagedGroups(&operationPolicy, managedGroups) {
+		t.Fatal("did not expect unsupported includeManagedGroups to require policy reconciliation")
 	}
 }
 
@@ -291,6 +290,20 @@ func TestManagedGroupShouldKeepPolicy(t *testing.T) {
 	}
 	if !ManagedGroupShouldKeepPolicy(managedGroups.Nodes, managedGroups, "read", "/data/process-groups/pg-2", "root", nil) {
 		t.Fatal("expected managed-nodes to keep component data read policy for queue replication")
+	}
+
+	unsupportedIncludeManagedGroupPolicies := []v1.AccessPolicy{
+		{
+			Type:                 v1.ComponentAccessPolicyType,
+			Action:               v1.WriteAccessPolicyAction,
+			Resource:             v1.OperationAccessPolicyResource,
+			ComponentType:        v1.ProcessGroupType,
+			ComponentId:          "pg-1",
+			IncludeManagedGroups: []v1.ManagedAccessPolicyGroup{v1.ManagedAdminsAccessPolicyGroup},
+		},
+	}
+	if ManagedGroupShouldKeepPolicy(managedGroups.Admins, managedGroups, "write", "/operation/process-groups/pg-1", "root", unsupportedIncludeManagedGroupPolicies) {
+		t.Fatal("did not expect managed-admins to keep unsupported includeManagedGroups policy")
 	}
 }
 

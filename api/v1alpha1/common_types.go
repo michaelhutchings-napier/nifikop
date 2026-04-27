@@ -174,6 +174,7 @@ type ResourceReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(self.includeManagedGroups) || size(self.includeManagedGroups) == 0 || (self.type == 'component' && self.resource == '/data' && (self.action == 'read' || self.action == 'write'))",message="includeManagedGroups is only supported for component /data read/write policies"
 type AccessPolicy struct {
 	// +kubebuilder:validation:Enum={"global","component"}
 	// type defines the kind of access policy, could be "global" or "component".
@@ -191,10 +192,11 @@ type AccessPolicy struct {
 	// componentId is used if the type is "component", it's allow to define the id of the component on which is the
 	// access policy
 	ComponentId string `json:"componentId,omitempty"`
-	// includeManagedGroups defines operator-managed groups that should be included on this policy in addition to
-	// the users or groups that directly reference the policy. This is useful when defining child component policies
-	// that break inheritance from the root process group.
-	// +kubebuilder:validation:items:Enum=nodes;admins;readers
+	// includeManagedGroups defines operator-managed admin or reader groups that should be included on this policy
+	// in addition to the users or groups that directly reference the policy. This is only supported for component
+	// /data read/write policies that break inheritance from the root process group. The managed-nodes group is
+	// added automatically to component /data read/write policies when required for clustered queue operations.
+	// +kubebuilder:validation:items:Enum=admins;readers
 	IncludeManagedGroups []ManagedAccessPolicyGroup `json:"includeManagedGroups,omitempty"`
 }
 
@@ -224,8 +226,6 @@ const (
 	// Allows users to modify.
 	WriteAccessPolicyAction AccessPolicyAction = "write"
 
-	// Managed nodes group.
-	ManagedNodesAccessPolicyGroup ManagedAccessPolicyGroup = "nodes"
 	// Managed admins group.
 	ManagedAdminsAccessPolicyGroup ManagedAccessPolicyGroup = "admins"
 	// Managed readers group.
