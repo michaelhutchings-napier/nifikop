@@ -1011,12 +1011,20 @@ func (r *Reconciler) reconcileNifiPod(log zap.Logger, desiredPod *corev1.Pod) (e
 			return errors.WrapIf(err, "could not apply last state to annotation"), false
 		}
 
+		if nodeState, found := r.NifiCluster.Status.NodesState[currentPod.Labels["nodeId"]]; found &&
+			nodeState.GracefulActionState.State.IsRunningState() &&
+			!k8sutil.PodReady(currentPod) {
+			return errorfactory.New(errorfactory.ReconcileRollingUpgrade{},
+				errors.New("pod is still not ready during graceful action"), "rolling upgrade in progress"), false
+		}
+
 		if !k8sutil.IsPodTerminatedOrShutdown(currentPod) {
 			if r.NifiCluster.Status.State != v1.NifiClusterRollingUpgrading {
 				if err := k8sutil.UpdateCRStatus(r.Client, r.NifiCluster, r.NifiClusterCurrentStatus, v1.NifiClusterRollingUpgrading, log); err != nil {
 					return errorfactory.New(errorfactory.StatusUpdateError{},
 						err, "setting state to rolling upgrade failed"), false
 				}
+				r.NifiCluster.Status.State = v1.NifiClusterRollingUpgrading
 			}
 
 			if r.NifiCluster.Status.State == v1.NifiClusterRollingUpgrading {

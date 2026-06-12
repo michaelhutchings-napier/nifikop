@@ -602,9 +602,69 @@ func (r *Reconciler) injectAdditionalSecurityContext(nodeConfig *v1.NodeConfig, 
 	}
 
 	for _, container := range containers {
-		container.SecurityContext = securityContext
+		container.SecurityContext = mergeSecurityContext(securityContext, container.SecurityContext)
 
 		injectedContainers = append(injectedContainers, container)
 	}
 	return
+}
+
+func mergeSecurityContext(base, override *corev1.SecurityContext) *corev1.SecurityContext {
+	if base == nil {
+		if override == nil {
+			return nil
+		}
+		return override.DeepCopy()
+	}
+
+	merged := base.DeepCopy()
+	if override == nil {
+		return merged
+	}
+
+	override = override.DeepCopy()
+	if override.Capabilities != nil {
+		merged.Capabilities = override.Capabilities
+	}
+	if override.Privileged != nil {
+		merged.Privileged = override.Privileged
+	}
+	if override.SELinuxOptions != nil {
+		merged.SELinuxOptions = override.SELinuxOptions
+	}
+	if override.WindowsOptions != nil {
+		merged.WindowsOptions = override.WindowsOptions
+	}
+	if override.RunAsUser != nil {
+		merged.RunAsUser = override.RunAsUser
+		if *override.RunAsUser == 0 && override.RunAsNonRoot == nil {
+			merged.RunAsNonRoot = nil
+		}
+	}
+	if override.RunAsGroup != nil {
+		merged.RunAsGroup = override.RunAsGroup
+	}
+	if override.RunAsNonRoot != nil {
+		merged.RunAsNonRoot = override.RunAsNonRoot
+	}
+	if override.ReadOnlyRootFilesystem != nil {
+		merged.ReadOnlyRootFilesystem = override.ReadOnlyRootFilesystem
+	}
+	if override.AllowPrivilegeEscalation != nil {
+		merged.AllowPrivilegeEscalation = override.AllowPrivilegeEscalation
+	}
+	if override.Privileged != nil && *override.Privileged && override.AllowPrivilegeEscalation == nil {
+		merged.AllowPrivilegeEscalation = nil
+	}
+	if override.ProcMount != nil {
+		merged.ProcMount = override.ProcMount
+	}
+	if override.SeccompProfile != nil {
+		merged.SeccompProfile = override.SeccompProfile
+	}
+	if override.AppArmorProfile != nil {
+		merged.AppArmorProfile = override.AppArmorProfile
+	}
+
+	return merged
 }
