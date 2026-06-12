@@ -2,7 +2,9 @@ package nifi
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -10,12 +12,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
 	"github.com/konpyutaika/nifikop/pkg/errorfactory"
 	"github.com/konpyutaika/nifikop/pkg/resources"
 	"github.com/konpyutaika/nifikop/pkg/util"
+	nifiutil "github.com/konpyutaika/nifikop/pkg/util/nifi"
 	"go.uber.org/zap"
 )
 
@@ -142,4 +146,111 @@ func TestReconcileNifiPodKeepsNotReadyPodDuringGracefulAction(t *testing.T) {
 		Namespace: currentPod.Namespace,
 	}, preservedPod))
 	assert.Equal(t, "apache/nifi:old", preservedPod.Spec.Containers[0].Image)
+}
+
+func TestReconcileNifiPodMarksStalledGracefulAction(t *testing.T) {
+	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, v1.AddToScheme(scheme))
+
+	currentPod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "nifi-cluster-1-nodeabcde",
+			Namespace: "namespace",
+			Labels: map[string]string{
+				"app":     "nifi",
+				"nifi_cr": "cluster",
+				"nodeId":  "1",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "nifi", Image: "apache/nifi:old"},
+			},
+			NodeName: "node-1",
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodFailed,
+			Conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+			},
+			ContainerStatuses: []corev1.ContainerStatus{
+				{
+					Name: "storage-manager",
+					State: corev1.ContainerState{
+						Terminated: &corev1.ContainerStateTerminated{Reason: "Error"},
+					},
+				},
+			},
+		},
+	}
+	desiredPod := currentPod.DeepCopy()
+	desiredPod.Spec.Containers[0].Image = "apache/nifi:new"
+
+	cluster := &v1.NifiCluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "cluster",
+			Namespace: "namespace",
+		},
+		Spec: v1.NifiClusterSpec{
+			NifiClusterTaskSpec: v1.NifiClusterTaskSpec{RetryDurationMinutes: 5},
+		},
+		Status: v1.NifiClusterStatus{
+			NodesState: map[string]v1.NodeState{
+				"1": {
+					ConfigurationState: v1.ConfigInSync,
+					GracefulActionState: v1.GracefulActionState{
+						ActionStep:  v1.ConnectStatus,
+						State:       v1.GracefulUpscaleRunning,
+						TaskStarted: time.Now().Add(-10 * time.Minute).UTC().Format(nifiutil.TimeStampLayout),
+					},
+				},
+			},
+		},
+	}
+	currentStatus := cluster.DeepCopy().Status
+	client := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(currentPod, cluster).
+		WithStatusSubresource(cluster).
+		Build()
+	recorder := record.NewFakeRecorder(1)
+	rec := Reconciler{
+		Recorder: recorder,
+		Reconciler: resources.Reconciler{
+			Client:                   client,
+			NifiCluster:              cluster,
+			NifiClusterCurrentStatus: currentStatus,
+		},
+	}
+
+	err, ready := rec.reconcileNifiPod(*zap.NewNop(), desiredPod)
+
+	require.Error(t, err)
+	_, isRollingUpgrade := err.(errorfactory.ReconcileRollingUpgrade)
+	assert.True(t, isRollingUpgrade)
+	assert.False(t, ready)
+
+	preservedPod := &corev1.Pod{}
+	require.NoError(t, client.Get(context.Background(), types.NamespacedName{
+		Name:      currentPod.Name,
+		Namespace: currentPod.Namespace,
+	}, preservedPod))
+	assert.Equal(t, "apache/nifi:old", preservedPod.Spec.Containers[0].Image)
+
+	updatedCluster := &v1.NifiCluster{}
+	require.NoError(t, client.Get(context.Background(), types.NamespacedName{
+		Name:      cluster.Name,
+		Namespace: cluster.Namespace,
+	}, updatedCluster))
+	message := updatedCluster.Status.NodesState["1"].GracefulActionState.ErrorMessage
+	assert.Contains(t, message, "is not ready after 5m graceful action timeout")
+	assert.Contains(t, message, "storage-manager terminated=Error")
+
+	select {
+	case event := <-recorder.Events:
+		assert.True(t, strings.Contains(event, gracefulActionPodStalledReason), event)
+	default:
+		t.Fatal("expected stalled graceful action event")
+	}
 }
