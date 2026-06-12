@@ -1024,7 +1024,6 @@ func (r *Reconciler) reconcileNifiPod(log zap.Logger, desiredPod *corev1.Pod) (e
 					return errorfactory.New(errorfactory.StatusUpdateError{},
 						err, "setting state to rolling upgrade failed"), false
 				}
-				r.NifiCluster.Status.State = v1.NifiClusterRollingUpgrading
 			}
 
 			if r.NifiCluster.Status.State == v1.NifiClusterRollingUpgrading {
