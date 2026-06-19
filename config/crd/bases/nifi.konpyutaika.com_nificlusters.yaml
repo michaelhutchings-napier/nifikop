@@ -2277,6 +2277,17 @@ spec:
                       format: int64
                       minimum: 1
                       type: integer
+                    seLinuxOptions:
+                      properties:
+                        level:
+                          type: string
+                        role:
+                          type: string
+                        type:
+                          type: string
+                        user:
+                          type: string
+                      type: object
                     seccompProfile:
                       properties:
                         localhostProfile:
@@ -3838,6 +3849,17 @@ spec:
                           format: int64
                           minimum: 1
                           type: integer
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
                         seccompProfile:
                           properties:
                             localhostProfile:
@@ -7643,6 +7665,17 @@ spec:
                       format: int64
                       minimum: 1
                       type: integer
+                    seLinuxOptions:
+                      properties:
+                        level:
+                          type: string
+                        role:
+                          type: string
+                        type:
+                          type: string
+                        user:
+                          type: string
+                      type: object
                     serviceAccountName:
                       type: string
                     storageConfigs:
@@ -8768,6 +8801,17 @@ spec:
                           format: int64
                           minimum: 1
                           type: integer
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
                         serviceAccountName:
                           type: string
                         storageConfigs:
