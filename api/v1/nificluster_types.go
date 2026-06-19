@@ -352,6 +352,8 @@ type NodeConfig struct {
 	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
 	// seccompProfile overrides the default seccompProfile of the nodes pod
 	SeccompProfile *corev1.SeccompProfile `json:"seccompProfile,omitempty"`
+	// seLinuxOptions overrides the default SELinux options of the nodes pod
+	SELinuxOptions *corev1.SELinuxOptions `json:"seLinuxOptions,omitempty"`
 	// securityContext overrides the default container security context for all containers in the pod
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
 	// storageConfigs specifies the node related configs
@@ -872,6 +874,10 @@ func (nConfig *NodeConfig) GetFSGroup() *int64 {
 	}
 
 	return func(i int64) *int64 { return &i }(defaultGroupID)
+}
+
+func (nConfig *NodeConfig) GetSELinuxOptions() *corev1.SELinuxOptions {
+	return nConfig.SELinuxOptions.DeepCopy()
 }
 
 func (nConfig *NodeConfig) GetIsNode() bool {

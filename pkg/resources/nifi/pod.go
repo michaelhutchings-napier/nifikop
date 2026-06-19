@@ -181,6 +181,7 @@ func (r *Reconciler) pod(node v1.Node, nodeConfig *v1.NodeConfig, pvcs []corev1.
 				RunAsNonRoot:   func(b bool) *bool { return &b }(true),
 				FSGroup:        nodeConfig.GetFSGroup(),
 				SeccompProfile: seccompProfile,
+				SELinuxOptions: nodeConfig.GetSELinuxOptions(),
 			},
 			TerminationGracePeriodSeconds: terminationGracePeriodSeconds,
 			InitContainers:                podInitContainers,
