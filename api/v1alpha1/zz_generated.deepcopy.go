@@ -1584,6 +1584,11 @@ func (in *NodeConfig) DeepCopyInto(out *NodeConfig) {
 		*out = new(v1.NodeAffinity)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.SELinuxOptions != nil {
+		in, out := &in.SELinuxOptions, &out.SELinuxOptions
+		*out = new(v1.SELinuxOptions)
+		**out = **in
+	}
 	if in.StorageConfigs != nil {
 		in, out := &in.StorageConfigs, &out.StorageConfigs
 		*out = make([]StorageConfig, len(*in))

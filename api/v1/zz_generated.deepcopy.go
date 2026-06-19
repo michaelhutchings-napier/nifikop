@@ -1235,6 +1235,11 @@ func (in *NodeConfig) DeepCopyInto(out *NodeConfig) {
 		*out = new(corev1.SeccompProfile)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.SELinuxOptions != nil {
+		in, out := &in.SELinuxOptions, &out.SELinuxOptions
+		*out = new(corev1.SELinuxOptions)
+		**out = **in
+	}
 	if in.SecurityContext != nil {
 		in, out := &in.SecurityContext, &out.SecurityContext
 		*out = new(corev1.SecurityContext)
