@@ -141,6 +141,7 @@ spec:
                       - /flow
                       - /controller
                       - /parameter-context
+                      - /connectors
                       - /provenance
                       - /restricted-components
                       - /policies
