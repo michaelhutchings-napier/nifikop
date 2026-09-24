@@ -1362,6 +1362,17 @@ spec:
                     format: int64
                     minimum: 1
                     type: integer
+                  seLinuxOptions:
+                    properties:
+                      level:
+                        type: string
+                      role:
+                        type: string
+                      type:
+                        type: string
+                      user:
+                        type: string
+                    type: object
                   seccompProfile:
                     properties:
                       localhostProfile:
@@ -1894,6 +1905,14 @@ spec:
                         required:
                         - data
                         - name
+                        type: object
+                      tlsAutoReload:
+                        properties:
+                          enabled:
+                            type: boolean
+                          interval:
+                            pattern: ^[[:space:]]*[1-9][0-9]*[[:space:]]+(millis|milliseconds?|ms|secs?|seconds?|mins?|minutes?|hours?|days?)[[:space:]]*$
+                            type: string
                         type: object
                       webProxyHosts:
                         items:

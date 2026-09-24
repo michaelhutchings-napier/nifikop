@@ -245,6 +245,9 @@ func convertNodeConfig(src NodeConfig) v1.NodeConfig {
 	if src.NodeAffinity != nil {
 		nConfig.NodeAffinity = src.NodeAffinity
 	}
+	if src.SELinuxOptions != nil {
+		nConfig.SELinuxOptions = src.SELinuxOptions
+	}
 	if src.ResourcesRequirements != nil {
 		nConfig.ResourcesRequirements = src.ResourcesRequirements
 	}
@@ -691,6 +694,9 @@ func convertFromNodeConfig(src v1.NodeConfig) NodeConfig {
 	}
 	if src.NodeAffinity != nil {
 		nConfig.NodeAffinity = src.NodeAffinity
+	}
+	if src.SELinuxOptions != nil {
+		nConfig.SELinuxOptions = src.SELinuxOptions
 	}
 	if src.ResourcesRequirements != nil {
 		nConfig.ResourcesRequirements = src.ResourcesRequirements

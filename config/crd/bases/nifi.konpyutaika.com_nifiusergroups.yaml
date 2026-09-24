@@ -44,6 +44,7 @@ spec:
                       - /flow
                       - /controller
                       - /parameter-contexts
+                      - /connectors
                       - /provenance
                       - /restricted-components
                       - /policies
@@ -140,6 +141,7 @@ spec:
                       - /flow
                       - /controller
                       - /parameter-context
+                      - /connectors
                       - /provenance
                       - /restricted-components
                       - /policies

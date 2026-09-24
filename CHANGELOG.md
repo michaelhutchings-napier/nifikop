@@ -2,13 +2,44 @@
 
 ### Added
 
+- [PR #692](https://github.com/konpyutaika/nifikop/pull/692) - **[Operator/NifiCluster]** Add printcolumns to NiFiCluster resource.
+
 ### Changed
 
+- [PR #681](https://github.com/konpyutaika/nifikop/pull/681) - **[Operator]** Upgrade golang to 1.26.3.
+- [PR #707](https://github.com/konpyutaika/nifikop/pull/707) - **[Operator]** Upgrade golang to 1.26.5.
+
 ### Fixed Bugs
+
+- [PR #662](https://github.com/konpyutaika/nifikop/pull/662) - **[Helm Chart]** Fix Kubernetes manager mode by adding operator leader-election RBAC, propagating the manager `serviceAccountName` to explicit `nodeConfigGroups`, and publishing not-ready headless addresses only in Kubernetes mode.
+- [PR #680](https://github.com/konpyutaika/nifikop/pull/680) - **[Helm Chart]** Rollback part of change on NiFiCluster introduced by [PR #662](https://github.com/konpyutaika/nifikop/pull/662).
+- [PR #668](https://github.com/konpyutaika/nifikop/pull/668) - **[Helm Chart]** Add configurable operator webhook TLS support with backward-compatible cert-manager and existing-secret flows.
+- [PR #664](https://github.com/konpyutaika/nifikop/pull/664) - **[Helm Chart/OpenShift]** Add explicit OpenShift SCC support for the operator and NiFi workloads, including support for existing SCCs and corrected SCC RBAC handling.
 
 ### Deprecated
 
 ### Removed
+
+## v1.17.0
+
+### Added
+
+- [PR #650](https://github.com/konpyutaika/nifikop/pull/650) - **[Operator/NifiCluster]** Add `spec.pod.terminationGracePeriodSeconds` support for NiFi pods.
+- [PR #660](https://github.com/konpyutaika/nifikop/pull/660) - **[Operator/NifiRegistryClient]** Introduce `v2alpha1` CRD version with support for Git-based registry backends (GitHub, GitLab) in addition to the existing NiFi Registry server.
+- [PR #659](https://github.com/konpyutaika/nifikop/pull/659) - **[Operator/NifiCluster]** Add `spec.readOnlyConfig.nifiProperties.tlsAutoReload` to enable native NiFi TLS auto-reload with validation and a one-time rollout when the setting changes.
+
+### Changed
+
+- [PR #641](https://github.com/konpyutaika/nifikop/pull/641) - **[Operator]** Upgrade golang to 1.25.7.
+- [PR #657](https://github.com/konpyutaika/nifikop/pull/657) - **[Operator]** Upgrade golang to 1.26.2.
+- [PR #616](https://github.com/konpyutaika/nifikop/pull/658) - **[NiGoApi]** Upgrade NiGoApi to v0.1.13.
+- [PR #660](https://github.com/konpyutaika/nifikop/pull/660) - **[Operator/NifiDataflow]** `spec.flowVersion` now accepts an integer or a string to support commit hash versions used by Git-based registries.
+
+### Fixed Bugs
+
+- [PR #655](https://github.com/konpyutaika/nifikop/pull/655) - **[Operator/NifiCluster]** Update Zookeeper connectivity validation.
+- [PR #646](https://github.com/konpyutaika/nifikop/pull/646) - **[Documentation]** Fix SSL documentation and examples by removing legacy `clusterSecure` / `siteToSiteSecure` fields, updating cert-manager Issuer apiVersion to `cert-manager.io/v1`, and clarifying `sslSecrets.tlsSecretName` requirements.
+- [PR #644](https://github.com/konpyutaika/nifikop/pull/644) - **[Helm Chart]** Fix `serviceAccountName` value path for Kubernetes manager mode by using `cluster.managerServiceAccount.name`.
 
 ## v1.16.0
 

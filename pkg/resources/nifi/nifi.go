@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
@@ -39,6 +41,10 @@ import (
 const (
 	componentName = "nifi"
 
+	podTLSAutoReloadEnabledAnnotation  = "nifikop.konpyutaika.com/tls-autoreload-enabled"
+	podTLSAutoReloadIntervalAnnotation = "nifikop.konpyutaika.com/tls-autoreload-interval"
+	gracefulActionPodStalledReason     = "GracefulActionPodStalled"
+
 	nodeSecretVolumeMount = "node-config"
 	nodeTmp               = "node-tmp"
 
@@ -47,6 +53,8 @@ const (
 	clientKeystoreVolume = "client-ks-files"
 	clientKeystorePath   = "/var/run/secrets/java.io/keystores/client"
 )
+
+var tlsAutoReloadIntervalRegexp = regexp.MustCompile(`^[[:space:]]*[1-9][0-9]*[[:space:]]+(millis|milliseconds?|ms|secs?|seconds?|mins?|minutes?|hours?|days?)[[:space:]]*$`)
 
 func isLinkerdInjected(p *corev1.Pod) bool {
 	if p == nil {
@@ -92,6 +100,44 @@ func unionLinkerdVolumes(desired, current *corev1.Pod) {
 	}
 }
 
+func applyTLSAutoReloadAnnotations(pod *corev1.Pod, properties *v1.NifiProperties) {
+	if pod == nil {
+		return
+	}
+
+	if pod.Annotations == nil {
+		pod.Annotations = map[string]string{}
+	}
+
+	delete(pod.Annotations, podTLSAutoReloadEnabledAnnotation)
+	delete(pod.Annotations, podTLSAutoReloadIntervalAnnotation)
+
+	if properties == nil || !properties.IsTLSAutoReloadEnabled() {
+		return
+	}
+
+	pod.Annotations[podTLSAutoReloadEnabledAnnotation] = "true"
+	pod.Annotations[podTLSAutoReloadIntervalAnnotation] = properties.GetTLSAutoReloadInterval()
+}
+
+func validateTLSAutoReloadProperties(properties *v1.NifiProperties) error {
+	if properties == nil || !properties.IsTLSAutoReloadEnabled() {
+		return nil
+	}
+
+	interval := properties.GetTLSAutoReloadInterval()
+	if !tlsAutoReloadIntervalRegexp.MatchString(interval) {
+		return errorfactory.New(
+			errorfactory.FatalReconcileError{},
+			errors.New("invalid tlsAutoReload interval"),
+			"tlsAutoReload.interval must look like '10 secs', '500 ms', '30 mins' or '12 hours'",
+			"interval", interval,
+		)
+	}
+
+	return nil
+}
+
 func unionLinkerdVolumeMounts(dst, src []corev1.Container) []corev1.Container {
 	idx := make(map[string]int, len(dst))
 	for i := range dst {
@@ -131,13 +177,15 @@ func meshAwareMerge(desired, current *corev1.Pod) {
 // Reconciler implements the Component Reconciler.
 type Reconciler struct {
 	resources.Reconciler
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // New creates a new reconciler for Nifi.
-func New(client client.Client, directClient client.Reader, scheme *runtime.Scheme, cluster *v1.NifiCluster, currentStatus v1.NifiClusterStatus) *Reconciler {
+func New(client client.Client, directClient client.Reader, scheme *runtime.Scheme, cluster *v1.NifiCluster, currentStatus v1.NifiClusterStatus, recorder record.EventRecorder) *Reconciler {
 	return &Reconciler{
-		Scheme: scheme,
+		Scheme:   scheme,
+		Recorder: recorder,
 		Reconciler: resources.Reconciler{
 			Client:                   client,
 			DirectClient:             directClient,
@@ -308,6 +356,17 @@ func (r *Reconciler) Reconcile(log zap.Logger) error {
 			return errors.WrapIfWithDetails(err, "failed to list PVCs")
 		}
 
+		nifiProperties := r.GetNifiPropertiesBase(node.Id)
+		if err := validateTLSAutoReloadProperties(nifiProperties); err != nil {
+			return err
+		}
+		if nifiProperties.IsTLSAutoReloadEnabled() && r.NifiCluster.Spec.ListenersConfig.SSLSecrets == nil {
+			log.Warn("tlsAutoReload is enabled but TLS is not configured; no autoreload properties will be rendered",
+				zap.String("clusterName", r.NifiCluster.Name),
+				zap.Int32("nodeId", node.Id),
+			)
+		}
+
 		o := r.secretConfig(node.Id, nodeConfig, serverPass, clientPass, superUsers, log)
 		err = k8sutil.Reconcile(log, r.Client, o, r.NifiCluster, &r.NifiClusterCurrentStatus)
 		if err != nil {
@@ -322,15 +381,18 @@ func (r *Reconciler) Reconcile(log zap.Logger) error {
 			}
 		}
 		o = r.pod(node, nodeConfig, pvcs, log)
-		err, isReady := r.reconcileNifiPod(log, o.(*corev1.Pod))
+		pod := o.(*corev1.Pod)
+		applyTLSAutoReloadAnnotations(pod, nifiProperties)
+
+		err, isReady := r.reconcileNifiPod(log, pod)
 		if err != nil {
 			return err
 		}
-		if nodeState, ok := r.NifiCluster.Status.NodesState[o.(*corev1.Pod).Labels["nodeId"]]; ok &&
+		if nodeState, ok := r.NifiCluster.Status.NodesState[pod.Labels["nodeId"]]; ok &&
 			nodeState.PodIsReady != isReady {
-			if err = k8sutil.UpdateNodeStatus(r.Client, []string{o.(*corev1.Pod).Labels["nodeId"]}, r.NifiCluster, r.NifiClusterCurrentStatus, isReady, log); err != nil {
+			if err = k8sutil.UpdateNodeStatus(r.Client, []string{pod.Labels["nodeId"]}, r.NifiCluster, r.NifiClusterCurrentStatus, isReady, log); err != nil {
 				return errors.WrapIfWithDetails(err, "could not update status for node(s)",
-					"id(s)", o.(*corev1.Pod).Labels["nodeId"])
+					"id(s)", pod.Labels["nodeId"])
 			}
 		}
 	}
@@ -703,6 +765,73 @@ func isDesiredStorageValueInvalid(desired, current *corev1.PersistentVolumeClaim
 	return desired.Spec.Resources.Requests.Storage().Value() < current.Spec.Resources.Requests.Storage().Value()
 }
 
+func (r *Reconciler) observeGracefulActionPodStall(log zap.Logger, nodeId string, nodeState v1.NodeState, pod *corev1.Pod) {
+	taskStarted := nodeState.GracefulActionState.TaskStarted
+	if taskStarted == "" {
+		return
+	}
+
+	started, err := nifiutil.ParseTimeStampToUnixTime(taskStarted)
+	if err != nil {
+		log.Warn("Could not parse graceful action start time",
+			zap.String("clusterName", r.NifiCluster.Name),
+			zap.String("nodeId", nodeId),
+			zap.String("taskStarted", taskStarted),
+			zap.Error(err))
+		return
+	}
+
+	elapsed := time.Since(started)
+	timeoutMinutes := r.NifiCluster.Spec.NifiClusterTaskSpec.GetDurationMinutes()
+	timeout := time.Duration(timeoutMinutes * float64(time.Minute))
+	if elapsed <= timeout {
+		return
+	}
+
+	message := fmt.Sprintf("Node %s pod %s is not ready after %.0fm graceful action timeout during %s (%s); phase=%s%s",
+		nodeId,
+		pod.Name,
+		timeoutMinutes,
+		nodeState.GracefulActionState.State,
+		nodeState.GracefulActionState.ActionStep,
+		pod.Status.Phase,
+		podContainerStatusSummary(pod))
+	if nodeState.GracefulActionState.ErrorMessage == message {
+		return
+	}
+
+	stalledState := nodeState.GracefulActionState
+	stalledState.ErrorMessage = message
+
+	if err := k8sutil.UpdateNodeStatus(r.Client, []string{nodeId}, r.NifiCluster, r.NifiClusterCurrentStatus, stalledState, log); err != nil {
+		log.Warn("Could not update graceful action stalled status",
+			zap.String("clusterName", r.NifiCluster.Name),
+			zap.String("nodeId", nodeId),
+			zap.Error(err))
+	}
+
+	log.Warn("Nifi pod is stalled during graceful action",
+		zap.String("clusterName", r.NifiCluster.Name),
+		zap.String("nodeId", nodeId),
+		zap.String("podName", pod.Name),
+		zap.String("message", message))
+	if r.Recorder != nil {
+		r.Recorder.Event(r.NifiCluster, corev1.EventTypeWarning, gracefulActionPodStalledReason, message)
+	}
+}
+
+func podContainerStatusSummary(pod *corev1.Pod) string {
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.State.Waiting != nil {
+			return fmt.Sprintf("; container=%s waiting=%s", status.Name, status.State.Waiting.Reason)
+		}
+		if status.State.Terminated != nil {
+			return fmt.Sprintf("; container=%s terminated=%s", status.Name, status.State.Terminated.Reason)
+		}
+	}
+	return ""
+}
+
 func (r *Reconciler) reconcileNifiPod(log zap.Logger, desiredPod *corev1.Pod) (error, bool) {
 	currentPod := desiredPod.DeepCopy()
 	desiredType := reflect.TypeOf(desiredPod)
@@ -951,6 +1080,14 @@ func (r *Reconciler) reconcileNifiPod(log zap.Logger, desiredPod *corev1.Pod) (e
 
 		if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredPod); err != nil {
 			return errors.WrapIf(err, "could not apply last state to annotation"), false
+		}
+
+		if nodeState, found := r.NifiCluster.Status.NodesState[currentPod.Labels["nodeId"]]; found &&
+			nodeState.GracefulActionState.State.IsRunningState() &&
+			!k8sutil.PodReady(currentPod) {
+			r.observeGracefulActionPodStall(log, currentPod.Labels["nodeId"], nodeState, currentPod)
+			return errorfactory.New(errorfactory.ReconcileRollingUpgrade{},
+				errors.New("pod is still not ready during graceful action"), "rolling upgrade in progress"), false
 		}
 
 		if !k8sutil.IsPodTerminatedOrShutdown(currentPod) {

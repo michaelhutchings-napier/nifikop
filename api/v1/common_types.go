@@ -187,7 +187,7 @@ type AccessPolicy struct {
 	// +kubebuilder:validation:Enum={"read","write"}
 	// action defines the kind of action that will be granted, could be "read" or "write"
 	Action AccessPolicyAction `json:"action"`
-	// +kubebuilder:validation:Enum={"/system","/flow","/controller","/parameter-contexts","/provenance","/restricted-components","/policies","/tenants","/site-to-site","/proxy","/counters","/","/operation","/provenance-data","/data","/policies","/data-transfer"}
+	// +kubebuilder:validation:Enum={"/system","/flow","/controller","/parameter-contexts","/connectors","/provenance","/restricted-components","/policies","/tenants","/site-to-site","/proxy","/counters","/","/operation","/provenance-data","/data","/policies","/data-transfer"}
 	// resource defines the kind of resource targeted by this access policies, please refer to the following page:
 	// https://nifi.apache.org/docs/nifi-docs/html/administration-guide.html#access-policies
 	Resource AccessPolicyResource `json:"resource"`
@@ -233,6 +233,8 @@ const (
 	// About the Parameter Contexts. Access to Parameter Contexts are inherited from the "access the controller"
 	// policies unless overridden.
 	ParameterContextAccessPolicyResource AccessPolicyResource = "/parameter-contexts"
+	// Allows users to view or modify Connectors.
+	ConnectorsAccessPolicyResource AccessPolicyResource = "/connectors"
 	// Allows users to submit a Provenance Search and request Event Lineage.
 	ProvenanceAccessPolicyResource AccessPolicyResource = "/provenance"
 	// About the restricted components assuming other permissions are sufficient. The restricted components may
@@ -294,7 +296,7 @@ const (
 const (
 	// ZookeeperClusterManager indicates that the cluster leader election and state management will be managed with ZooKeeper.
 	ZookeeperClusterManager ClusterManagerType = "zookeeper"
-	// ZookeeperClusterManager indicates that the cluster leader election and state management will be managed with Kubernetes resources,
+	// KubernetesClusterManager indicates that the cluster leader election and state management will be managed with Kubernetes resources,
 	// respectively with Leases and ConfigMaps.
 	KubernetesClusterManager ClusterManagerType = "kubernetes"
 )

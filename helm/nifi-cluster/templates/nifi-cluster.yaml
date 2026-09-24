@@ -1,3 +1,4 @@
+{{- $defaultNodeServiceAccountName := include "nifi-cluster.defaultNodeServiceAccountName" . | trim -}}
 apiVersion: nifi.konpyutaika.com/v1
 kind: NifiCluster
 metadata:
@@ -29,6 +30,9 @@ spec:
   {{- if .Values.cluster.pod.hostAliases }}
     hostAliases:
     {{- toYaml .Values.cluster.pod.hostAliases | nindent 6}}
+  {{- end }}
+  {{- if ne .Values.cluster.pod.terminationGracePeriodSeconds nil }}
+    terminationGracePeriodSeconds: {{ .Values.cluster.pod.terminationGracePeriodSeconds }}
   {{- end }}
   {{- if .Values.cluster.pod.livenessProbe }}
     livenessProbe:
@@ -143,6 +147,10 @@ spec:
         name: {{ .Values.cluster.nifiProperties.overrideConfigMap.name }}
         namespace: {{ default .Release.Namespace .Values.cluster.nifiProperties.overrideConfigMap.namespace }}
     {{- end }}
+    {{- with .Values.cluster.nifiProperties.tlsAutoReload }}
+      tlsAutoReload:
+      {{- toYaml . | nindent 8 }}
+    {{- end }}
       webProxyHosts:
       {{- toYaml .Values.cluster.nifiProperties.webProxyHosts | nindent 8}}
       {{- if and .Values.cluster.nifiProperties.webProxyNodePorts.enabled .Values.cluster.externalServices }}
@@ -170,14 +178,25 @@ spec:
         name: {{ include "nifi-cluster.fullname" . }}
         namespace: {{ .Release.Namespace }}
       nifiJvmMemory: {{ .Values.cluster.bootstrapProperties.nifiJvmMemory }}
+  {{- if and (empty .Values.cluster.nodeConfigGroups) (not $defaultNodeServiceAccountName) }}
+  nodeConfigGroups: {}
+  {{- else }}
   nodeConfigGroups:
   {{- if empty .Values.cluster.nodeConfigGroups }}
-    {{- if eq .Values.cluster.manager "kubernetes" }}
     default-group:
-      serviceAccountName: {{ tpl (default (include "nifi-cluster.fullname" .) .Values.serviceAccount.name) . }}
+    {{- if $defaultNodeServiceAccountName }}
+      serviceAccountName: {{ $defaultNodeServiceAccountName }}
     {{- end }}
   {{- else }}
-  {{- tpl (toYaml .Values.cluster.nodeConfigGroups) . | nindent 4 }}
+  {{- range $groupName, $groupConfig := .Values.cluster.nodeConfigGroups }}
+    {{- $renderedGroup := deepCopy $groupConfig }}
+    {{- if and $defaultNodeServiceAccountName (not $renderedGroup.serviceAccountName) }}
+    {{- $_ := set $renderedGroup "serviceAccountName" $defaultNodeServiceAccountName }}
+    {{- end }}
+    {{ $groupName }}:
+{{ toYaml $renderedGroup | nindent 6 }}
+  {{- end }}
+  {{- end }}
   {{- end }}
   nodes:
   {{- toYaml .Values.cluster.nodes | nindent 4 }}

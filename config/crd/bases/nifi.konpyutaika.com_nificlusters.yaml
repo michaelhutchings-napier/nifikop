@@ -14,7 +14,20 @@ spec:
     singular: nificluster
   scope: Namespaced
   versions:
-  - name: v1
+  - additionalPrinterColumns:
+    - description: The current operational state of the NiFi cluster
+      jsonPath: .status.state
+      name: Cluster state
+      type: string
+    - description: Number of errors encountered during rolling upgrades
+      jsonPath: .status.rollingUpgradeStatus.errorCount
+      name: Upgrade Errors
+      type: integer
+    - description: Timestamp of the last successful rolling upgrade
+      jsonPath: .status.rollingUpgradeStatus.lastSuccess
+      name: Last Upgrade
+      type: string
+    name: v1
     schema:
       openAPIV3Schema:
         properties:
@@ -2259,6 +2272,17 @@ spec:
                       format: int64
                       minimum: 1
                       type: integer
+                    seLinuxOptions:
+                      properties:
+                        level:
+                          type: string
+                        role:
+                          type: string
+                        type:
+                          type: string
+                        user:
+                          type: string
+                      type: object
                     seccompProfile:
                       properties:
                         localhostProfile:
@@ -3815,6 +3839,17 @@ spec:
                           format: int64
                           minimum: 1
                           type: integer
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
                         seccompProfile:
                           properties:
                             localhostProfile:
@@ -4320,6 +4355,14 @@ spec:
                               - data
                               - name
                               type: object
+                            tlsAutoReload:
+                              properties:
+                                enabled:
+                                  type: boolean
+                                interval:
+                                  pattern: ^[[:space:]]*[1-9][0-9]*[[:space:]]+(millis|milliseconds?|ms|secs?|seconds?|mins?|minutes?|hours?|days?)[[:space:]]*$
+                                  type: string
+                              type: object
                             webProxyHosts:
                               items:
                                 type: string
@@ -4547,6 +4590,11 @@ spec:
                         format: int32
                         type: integer
                     type: object
+                  terminationGracePeriodSeconds:
+                    default: 120
+                    format: int64
+                    minimum: 0
+                    type: integer
                 type: object
               propagateLabels:
                 type: boolean
@@ -4835,6 +4883,14 @@ spec:
                         required:
                         - data
                         - name
+                        type: object
+                      tlsAutoReload:
+                        properties:
+                          enabled:
+                            type: boolean
+                          interval:
+                            pattern: ^[[:space:]]*[1-9][0-9]*[[:space:]]+(millis|milliseconds?|ms|secs?|seconds?|mins?|minutes?|hours?|days?)[[:space:]]*$
+                            type: string
                         type: object
                       webProxyHosts:
                         items:
@@ -7599,6 +7655,17 @@ spec:
                       format: int64
                       minimum: 1
                       type: integer
+                    seLinuxOptions:
+                      properties:
+                        level:
+                          type: string
+                        role:
+                          type: string
+                        type:
+                          type: string
+                        user:
+                          type: string
+                      type: object
                     serviceAccountName:
                       type: string
                     storageConfigs:
@@ -8724,6 +8791,17 @@ spec:
                           format: int64
                           minimum: 1
                           type: integer
+                        seLinuxOptions:
+                          properties:
+                            level:
+                              type: string
+                            role:
+                              type: string
+                            type:
+                              type: string
+                            user:
+                              type: string
+                          type: object
                         serviceAccountName:
                           type: string
                         storageConfigs:

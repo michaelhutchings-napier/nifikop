@@ -2,7 +2,7 @@
 ##
 image:
   repository: ghcr.io/konpyutaika/docker-images/nifikop
-  tag: v1.16.0-release
+  tag: v1.17.0-release
   pullPolicy: Always
   imagePullSecrets:
     enabled: false
@@ -32,6 +32,17 @@ resources:
 ## RunAsUser for OpenShift compatibility
 podSecurityContext:
   runAsUser: 1000
+
+## OpenShift-specific behavior for the operator chart.
+openshift:
+  scc:
+    ## Create a dedicated SCC for the operator on OpenShift.
+    ## The SCC is only rendered when the cluster exposes the security.openshift.io/v1 API.
+    create: true
+    ## Name of a pre-existing SCC to use instead of creating one.
+    ## When set, the chart skips SCC creation but still grants the operator service account
+    ## permission to use the named SCC.
+    existingName: ""
 
 securityContext:
   allowPrivilegeEscalation: false
@@ -74,6 +85,35 @@ certManager:
 
 webhook:
   enabled: true
+  tls:
+    # How the operator webhook serving certificate is provided:
+    #   certManager:    the chart creates a cert-manager Certificate (and
+    #                   optionally a self-signed Issuer). Requires
+    #                   certManager.enabled=true.
+    #   existingSecret: the chart mounts a pre-created TLS secret and does
+    #                   not create a Certificate or Issuer.
+    mode: certManager
+    # Shared compatibility override for the webhook TLS secret name.
+    # In certManager mode this sets Certificate.spec.secretName; in
+    # existingSecret mode this names the pre-created secret to mount.
+    # The mode-specific values below take precedence when set.
+    secretName: ""
+    certManager:
+      # When true, create a namespaced self-signed Issuer for the webhook
+      # Certificate. Set to false to reference an existing Issuer or
+      # ClusterIssuer via issuerRef instead.
+      createIssuer: true
+      issuerRef:
+        name: selfsigned-issuer
+        kind: Issuer
+        group: cert-manager.io
+      # Override the Certificate's secretName. When empty, defaults to
+      # <chart-name>-webhook-server-cert.
+      secretName: ""
+    existingSecret:
+      # Name of the pre-created TLS secret to mount. Required when the
+      # resolved mode is existingSecret unless webhook.tls.secretName is set.
+      name: ""
 
 additionalEnvs: []
   # - name: MY_ENV

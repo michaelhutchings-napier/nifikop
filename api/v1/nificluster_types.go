@@ -175,6 +175,11 @@ type PodPolicy struct {
 	// A list of host aliases to include in every pod's /etc/hosts configuration in the scenario where DNS is not available.
 	// +optional
 	HostAliases []corev1.HostAlias `json:"hostAliases,omitempty"`
+	// TerminationGracePeriodSeconds specifies how long Kubernetes should wait for the pod to shut down gracefully before forcefully terminating it.
+	// +optional
+	// +kubebuilder:default=120
+	// +kubebuilder:validation:Minimum=0
+	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
 	// Override the default readiness probe settings
 	// +optional
 	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
@@ -265,9 +270,20 @@ type NifiProperties struct {
 	WebProxyHosts []string `json:"webProxyHosts,omitempty"`
 	// Nifi security client auth
 	NeedClientAuth bool `json:"needClientAuth,omitempty"`
+	// TLSAutoReload enables NiFi SSL context auto-reload when keystore/truststore contents change.
+	TLSAutoReload *TLSAutoReloadConfig `json:"tlsAutoReload,omitempty"`
 	// Indicates which of the configured authorizers in the authorizers.xml file to use
 	// https://nifi.apache.org/docs/nifi-docs/html/administration-guide.html#authorizer-configuration
 	Authorizer string `json:"authorizer,omitempty"`
+}
+
+// TLSAutoReloadConfig controls NiFi SSL context auto-reload behavior.
+type TLSAutoReloadConfig struct {
+	// Enabled turns on NiFi SSL context auto-reload.
+	Enabled bool `json:"enabled,omitempty"`
+	// Interval controls how often NiFi checks keystore/truststore files for changes.
+	// +kubebuilder:validation:Pattern:="^[[:space:]]*[1-9][0-9]*[[:space:]]+(millis|milliseconds?|ms|secs?|seconds?|mins?|minutes?|hours?|days?)[[:space:]]*$"
+	Interval string `json:"interval,omitempty"`
 }
 
 // ZookeeperProperties configuration that will be applied to the node.
@@ -336,6 +352,8 @@ type NodeConfig struct {
 	NodeAffinity *corev1.NodeAffinity `json:"nodeAffinity,omitempty"`
 	// seccompProfile overrides the default seccompProfile of the nodes pod
 	SeccompProfile *corev1.SeccompProfile `json:"seccompProfile,omitempty"`
+	// seLinuxOptions overrides the default SELinux options of the nodes pod
+	SELinuxOptions *corev1.SELinuxOptions `json:"seLinuxOptions,omitempty"`
 	// securityContext overrides the default container security context for all containers in the pod
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
 	// storageConfigs specifies the node related configs
@@ -688,6 +706,9 @@ type PrometheusReportingTaskStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:printcolumn:name="Cluster state",type="string",JSONPath=".status.state",description="The current operational state of the NiFi cluster"
+// +kubebuilder:printcolumn:name="Upgrade Errors",type="integer",JSONPath=".status.rollingUpgradeStatus.errorCount",description="Number of errors encountered during rolling upgrades"
+// +kubebuilder:printcolumn:name="Last Upgrade",type="string",JSONPath=".status.rollingUpgradeStatus.lastSuccess",description="Timestamp of the last successful rolling upgrade"
 
 // NifiCluster is the Schema for the nificlusters API.
 type NifiCluster struct {
@@ -855,6 +876,10 @@ func (nConfig *NodeConfig) GetFSGroup() *int64 {
 	return func(i int64) *int64 { return &i }(defaultGroupID)
 }
 
+func (nConfig *NodeConfig) GetSELinuxOptions() *corev1.SELinuxOptions {
+	return nConfig.SELinuxOptions.DeepCopy()
+}
+
 func (nConfig *NodeConfig) GetIsNode() bool {
 	if nConfig.IsNode != nil {
 		return *nConfig.IsNode
@@ -882,6 +907,19 @@ func (nProperties NifiProperties) GetAuthorizer() string {
 		return nProperties.Authorizer
 	}
 	return "managed-authorizer"
+}
+
+// IsTLSAutoReloadEnabled returns true when NiFi SSL context auto-reload is enabled.
+func (nProperties NifiProperties) IsTLSAutoReloadEnabled() bool {
+	return nProperties.TLSAutoReload != nil && nProperties.TLSAutoReload.Enabled
+}
+
+// GetTLSAutoReloadInterval returns the default "10 secs" interval when not specified.
+func (nProperties NifiProperties) GetTLSAutoReloadInterval() string {
+	if nProperties.TLSAutoReload != nil && nProperties.TLSAutoReload.Interval != "" {
+		return nProperties.TLSAutoReload.Interval
+	}
+	return "10 secs"
 }
 
 func (nSpec *NifiClusterSpec) GetMetricPort() *int {

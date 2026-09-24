@@ -117,6 +117,7 @@ roleRef:
 
 :::info
 In this case, you need to set `clusterManager` in `NiFiCluster`'s specification to `kubernetes`.
+Kubernetes manager mode requires a NiFi 2.x image. NiFi 1.x images still expect ZooKeeper-backed cluster coordination during bootstrap.
 You can also use the Helm chart to create your cluster and it will take care of it for you.
 :::
 
@@ -138,26 +139,21 @@ You can find other examples for NiFi 2 for:
 :::
 
 ### On OpenShift
+For OpenShift deployments, use the Helm chart values to enable SCC support for NiFi workloads:
 
-```bash
-# Add your zookeeper svc name to the configuration
-kubectl create -n nifi -f config/samples/simplenificluster.yaml
-### On OpenShift
-
-We need to get the uid/gid for the RunAsUser and the fsGroup for the namespace we deploy our nificluster in.
-
-```bash
-uid=$(kubectl get namespace nifi -o=jsonpath='{.metadata.annotations.openshift\.io/sa\.scc\.supplemental-groups}' | sed 's/\/10000$//' | tr -d '[:space:]')
+```yaml
+cluster:
+  openshift:
+    scc:
+      create: true
 ```
 
-Then update the config/samples/openshift file with our uid value.
+If your cluster already provides an approved SCC, use:
 
-```bash
-sed -i "s/1000690000/$uid/g" config/samples/openshift.yaml
-```
-
-And after you can deploy a simple NiFi cluster.
-
-```bash
-kubectl create -n nifi -f config/samples/openshift.yaml
+```yaml
+cluster:
+  openshift:
+    scc:
+      create: false
+      existingName: my-existing-scc
 ```

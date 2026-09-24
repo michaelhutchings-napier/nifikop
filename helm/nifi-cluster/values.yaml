@@ -30,6 +30,26 @@ cluster:
   # -- whether or not to only deploy one nifi pod per node in this cluster
   oneNifiNodePerNode: false
 
+  # -- OpenShift SCC support for NiFi workloads.
+  openshift:
+    scc:
+      # -- Create a dedicated SCC for NiFi workloads on OpenShift.
+      # The SCC is only rendered when the cluster exposes the security.openshift.io/v1 API.
+      create: false
+      # -- Name of a pre-existing SCC to use instead of creating one.
+      # When set, the chart skips SCC creation but still creates a ClusterRole/ClusterRoleBinding
+      # granting the workload service account permission to use the named SCC.
+      existingName: ""
+      serviceAccount:
+        # -- Create a dedicated service account for SCC binding when manager != kubernetes.
+        # Ignored when manager=kubernetes, where managerServiceAccount is used instead.
+        create: true
+        # -- Leave empty to default to the release fullname.
+        name: ""
+        # -- Annotations applied to the SCC workload service account when it is created by the chart.
+        annotations: {}
+        # -- Labels applied to the SCC workload service account when it is created by the chart.
+        labels: {}
   # -- the template to use to create nodes.
   # see https://konpyutaika.github.io/nifikop/docs/5_references/1_nifi_cluster#nificlusterspec
   # @default -- "node-%d-<cluster-name>"
@@ -69,6 +89,8 @@ cluster:
     labels: {}
     # -- host aliases to assign to each pod. See: https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#hostalias-v1-core
     hostAliases: []
+    # -- Graceful shutdown timeout in seconds for NiFi pods before Kubernetes forcefully terminates them
+    terminationGracePeriodSeconds: 120
     # -- (object) The pod readiness probe override: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-readiness-probes
     readinessProbe: 
     # -- (object) The pod liveness probe override: https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/#define-a-liveness-command
@@ -140,6 +162,17 @@ cluster:
   nifiProperties:
     overrideConfigs: |
       nifi.web.proxy.context.path=/nifi-cluster
+
+    # -- Native NiFi TLS auto-reload support. When enabled, the operator renders
+    # nifi.security.autoreload.* into nifi.properties so NiFi reloads keystore and
+    # truststore contents without a pod restart.
+    # Supported when the target NiFi version exposes nifi.security.autoreload.*.
+    # Verify compatibility with your chosen NiFi release.
+    # Enabling this or changing the interval causes a one-time rolling restart so
+    # the updated nifi.properties is copied into the running NiFi container.
+    tlsAutoReload: {}
+    #   enabled: true
+    #   interval: "10 secs"
     
     # -- A ConfigMap ref to override the default nifi properties
     # see https://konpyutaika.github.io/nifikop/docs/5_references/1_nifi_cluster/2_read_only_config#nifiproperties
@@ -395,12 +428,37 @@ nodeGroupAutoscalers:
 registryClients:
   - name: default
     enabled: false
-    endpoint: http://nifi-registry
     description: "Default NiFi Registry client"
-  - name: alternate
-    enabled: false
-    endpoint: http://nifi-registry
-    description: "Alternate NiFi Registry client"
+    type: registry  # registry, github, or gitlab
+    registryClientConfig:
+      uri: http://nifi-registry
+  # -- GitHub registry client example
+  # - name: github
+  #   enabled: false
+  #   description: "GitHub flow registry"
+  #   type: github
+  #   githubConfig:
+  #     repositoryOwner: my-org
+  #     repositoryName: nifi-flows
+  #     authenticationType: PERSONAL_ACCESS_TOKEN  # NONE, PERSONAL_ACCESS_TOKEN, APP_INSTALLATION
+  #     personalAccessTokenSecretRef:
+  #       name: github-pat-secret
+  #       namespace: ""
+  #       data: token
+  #     defaultBranch: main
+  # -- GitLab registry client example
+  # - name: gitlab
+  #   enabled: false
+  #   description: "GitLab flow registry"
+  #   type: gitlab
+  #   gitlabConfig:
+  #     repositoryNamespace: my-group/my-subgroup
+  #     repositoryName: nifi-flows
+  #     accessTokenSecretRef:
+  #       name: gitlab-token-secret
+  #       namespace: ""
+  #       data: token
+  #     defaultBranch: main
 
 # -- Parameter context configurations.
 # This is required if you wish to deploy versioned flows via the dataflow config. However, 
