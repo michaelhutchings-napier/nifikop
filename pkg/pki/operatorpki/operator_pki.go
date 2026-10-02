@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
 	"github.com/konpyutaika/nifikop/pkg/errorfactory"
@@ -90,7 +91,11 @@ func (o *operatorPKI) FinalizePKI(ctx context.Context, logger zap.Logger) error 
 		if !t.owned(secret) {
 			continue
 		}
-		if err := o.client.Delete(ctx, secret); err != nil && !apierrors.IsNotFound(err) {
+		// Delete only the object whose ownership was just checked. If it was replaced or
+		// rewritten in between, the API server refuses and the next pass checks it again.
+		uid, resourceVersion := secret.UID, secret.ResourceVersion
+		if err := o.client.Delete(ctx, secret,
+			client.Preconditions{UID: &uid, ResourceVersion: &resourceVersion}); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
 	}

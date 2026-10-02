@@ -377,6 +377,17 @@ func keyStoresMatch(secret *corev1.Secret, leaf *x509.Certificate, ca *certifica
 	if !bytes.Equal(entry.CertChain[0].Content, leaf.Raw) {
 		return false
 	}
+	// The chain NiFi presents must be exactly what issue builds: the leaf, then every
+	// certificate of the CA bundle in order (a supplied CA may carry its own issuers).
+	caChain, err := certutil.DecodeCertificateChain(ca.CertPEM)
+	if err != nil || len(entry.CertChain) != 1+len(caChain) {
+		return false
+	}
+	for i, cert := range caChain {
+		if !bytes.Equal(entry.CertChain[i+1].Content, cert.Raw) {
+			return false
+		}
+	}
 	privateKey, err := parsePrivateKeyDER(entry.PrivKey)
 	if err != nil {
 		return false

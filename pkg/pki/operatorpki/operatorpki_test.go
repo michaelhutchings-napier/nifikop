@@ -22,11 +22,13 @@ import (
 	keystore "github.com/pavel-v-chernykh/keystore-go"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
 	certutil "github.com/konpyutaika/nifikop/pkg/util/cert"
@@ -1902,5 +1904,274 @@ func TestControllerTLSConfigRefusesIssuerRef(t *testing.T) {
 	cluster.Spec.ListenersConfig.SSLSecrets.IssuerRef = &cmmeta.ObjectReference{Name: "company-pki", Kind: "ClusterIssuer"}
 	if _, err := manager.GetControllerTLSConfig(); err == nil {
 		t.Error("Expected the controller to stop authenticating with local-CA material once issuerRef is set")
+	}
+}
+
+// TestFinalizePKISkipsSecretChangedAfterCheck: teardown deletes only the object whose
+// ownership it checked. A secret rewritten between that check and the delete is refused,
+// survives the pass, and is checked again on the next one.
+func TestFinalizePKISkipsSecretChangedAfterCheck(t *testing.T) {
+	cluster := newMockCluster()
+	manager := newMock(cluster)
+	ctx := context.Background()
+
+	if err := manager.ReconcilePKI(ctx, *log, scheme.Scheme, []string{}); err != nil {
+		t.Fatal("Expected no error, got:", err)
+	}
+	caName := types.NamespacedName{Name: "test-ca-certificate", Namespace: cluster.Namespace}
+
+	rewritten := false
+	manager.client = interceptor.NewClient(manager.client.(client.WithWatch), interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if obj.GetName() == caName.Name && !rewritten {
+				rewritten = true
+				// Another writer updates the secret after FinalizePKI has read it.
+				current := &corev1.Secret{}
+				if err := c.Get(ctx, caName, current); err != nil {
+					return err
+				}
+				current.Labels = map[string]string{"rewritten": "true"}
+				if err := c.Update(ctx, current); err != nil {
+					return err
+				}
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+	})
+
+	if err := manager.FinalizePKI(ctx, *log); !apierrors.IsConflict(err) {
+		t.Fatal("Expected the delete to be refused as a conflict, got:", err)
+	}
+	if err := manager.client.Get(ctx, caName, &corev1.Secret{}); err != nil {
+		t.Fatal("Expected the rewritten secret to survive, got:", err)
+	}
+
+	// The next pass reads it again, still finds it owned, and removes it.
+	if err := manager.FinalizePKI(ctx, *log); err != nil {
+		t.Fatal("Expected no error on the next pass, got:", err)
+	}
+	if err := manager.client.Get(ctx, caName, &corev1.Secret{}); !apierrors.IsNotFound(err) {
+		t.Error("Expected the secret to be deleted on the next pass, got:", err)
+	}
+}
+
+// TestFinalizePKISendsDeletePreconditions: both preconditions reach the API server. The
+// fake client enforces only the resourceVersion one, so the UID one is checked as sent.
+func TestFinalizePKISendsDeletePreconditions(t *testing.T) {
+	cluster := newMockCluster()
+	manager := newMock(cluster)
+	ctx := context.Background()
+
+	if err := manager.ReconcilePKI(ctx, *log, scheme.Scheme, []string{}); err != nil {
+		t.Fatal("Expected no error, got:", err)
+	}
+	caName := types.NamespacedName{Name: "test-ca-certificate", Namespace: cluster.Namespace}
+	ca := &corev1.Secret{}
+	if err := manager.client.Get(ctx, caName, ca); err != nil {
+		t.Fatal("Expected the CA secret to exist, got:", err)
+	}
+	// The fake client assigns no UIDs; give the secret one, as an API server would have.
+	ca.UID = "ca-secret-uid"
+	if err := manager.client.Update(ctx, ca); err != nil {
+		t.Fatal("Could not set the secret's UID:", err)
+	}
+	if err := manager.client.Get(ctx, caName, ca); err != nil {
+		t.Fatal("Expected the CA secret to exist, got:", err)
+	}
+
+	var sent *client.DeleteOptions
+	manager.client = interceptor.NewClient(manager.client.(client.WithWatch), interceptor.Funcs{
+		Delete: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.DeleteOption) error {
+			if obj.GetName() == caName.Name {
+				sent = (&client.DeleteOptions{}).ApplyOptions(opts)
+			}
+			return c.Delete(ctx, obj, opts...)
+		},
+	})
+
+	if err := manager.FinalizePKI(ctx, *log); err != nil {
+		t.Fatal("Expected no error, got:", err)
+	}
+	if sent == nil || sent.Preconditions == nil {
+		t.Fatal("Expected the CA secret to be deleted with preconditions")
+	}
+	if uid := sent.Preconditions.UID; uid == nil || *uid != ca.UID {
+		t.Error("Expected a UID precondition matching the checked secret, got:", uid)
+	}
+	if rv := sent.Preconditions.ResourceVersion; rv == nil || *rv != ca.ResourceVersion {
+		t.Error("Expected a resourceVersion precondition matching the checked secret, got:", rv)
+	}
+}
+
+// TestProvidedCABundleIsStable: a supplied CA that carries its own issuer yields the
+// chain leaf, intermediate, root - and that chain is reused, not reissued every pass.
+func TestProvidedCABundleIsStable(t *testing.T) {
+	cluster := newMockCluster()
+	cluster.Spec.ListenersConfig.SSLSecrets.Create = false
+
+	rootCert, rootKey, err := generateTestCA()
+	if err != nil {
+		t.Fatal("Could not build a root CA:", err)
+	}
+	intermediateCert, intermediateKey, err := generateTestIntermediate(rootCert, rootKey)
+	if err != nil {
+		t.Fatal("Could not build an intermediate CA:", err)
+	}
+	bundle := append(append([]byte{}, intermediateCert...), rootCert...)
+	provided := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cluster.Spec.ListenersConfig.SSLSecrets.TLSSecretName,
+			Namespace: cluster.Namespace,
+		},
+		Data: map[string][]byte{v1.CACertKey: bundle, v1.CAPrivateKeyKey: intermediateKey},
+	}
+
+	manager := newMock(cluster, provided)
+	ctx := context.Background()
+	if err := manager.ReconcilePKI(ctx, *log, scheme.Scheme, []string{}); err != nil {
+		t.Fatal("Expected no error, got:", err)
+	}
+	user := pkicommon.ControllerUserForCluster(cluster)
+	if _, err := manager.ReconcileUserCertificate(ctx, *log, user, scheme.Scheme); err != nil {
+		t.Fatal("Expected no error, got:", err)
+	}
+
+	secret := &corev1.Secret{}
+	name := types.NamespacedName{Name: user.Spec.SecretName, Namespace: cluster.Namespace}
+	if err := manager.client.Get(ctx, name, secret); err != nil {
+		t.Fatal("Expected the user secret to exist, got:", err)
+	}
+	ks, err := keystore.Decode(bytes.NewReader(secret.Data[v1.TLSJKSKeyStore]), secret.Data[v1.PasswordKey])
+	if err != nil {
+		t.Fatal("Expected the keystore to open, got:", err)
+	}
+	entry, ok := ks[certutil.JKSKeyAlias].(*keystore.PrivateKeyEntry)
+	if !ok {
+		t.Fatal("Expected a private key entry in the keystore")
+	}
+	want, err := certutil.DecodeCertificateChain(bundle)
+	if err != nil {
+		t.Fatal("Could not decode the bundle:", err)
+	}
+	if len(entry.CertChain) != 3 ||
+		!bytes.Equal(entry.CertChain[1].Content, want[0].Raw) || !bytes.Equal(entry.CertChain[2].Content, want[1].Raw) {
+		t.Fatal("Expected the keystore chain to be leaf, intermediate, root; got entries:", len(entry.CertChain))
+	}
+
+	before := secret.ResourceVersion
+	if _, err := manager.ReconcileUserCertificate(ctx, *log, user, scheme.Scheme); err != nil {
+		t.Fatal("Expected no error, got:", err)
+	}
+	if err := manager.client.Get(ctx, name, secret); err != nil {
+		t.Fatal("Expected the user secret to exist, got:", err)
+	}
+	if secret.ResourceVersion != before {
+		t.Error("Expected a valid bundled chain to be reused, but the secret was rewritten")
+	}
+}
+
+// generateTestIntermediate builds a CA signed by the given root.
+func generateTestIntermediate(rootCertPEM, rootKeyPEM []byte) (certPEM, keyPEM []byte, err error) {
+	root, err := certutil.DecodeCertificate(rootCertPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+	rootKey, err := parsePrivateKey(rootKeyPEM)
+	if err != nil {
+		return nil, nil, err
+	}
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, nil, err
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, nil, err
+	}
+	template := &x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "test-intermediate-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(5 * 365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, root, &key.PublicKey, rootKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), nil
+}
+
+// TestKeyStoreWithWrongChainIsReissued: a keystore whose chain is anything other than the
+// leaf followed by this CA is rebuilt, even when the leaf and its key still match.
+func TestKeyStoreWithWrongChainIsReissued(t *testing.T) {
+	strangerCA, _, err := generateTestCA()
+	if err != nil {
+		t.Fatal("Could not build an unrelated CA:", err)
+	}
+	for name, chainCA := range map[string][]byte{
+		"foreign issuer": strangerCA,
+		"leaf only":      nil,
+	} {
+		t.Run(name, func(t *testing.T) {
+			cluster := newMockCluster()
+			manager := newMock(cluster)
+			ctx := context.Background()
+
+			if err := manager.ReconcilePKI(ctx, *log, scheme.Scheme, []string{}); err != nil {
+				t.Fatal("Expected no error, got:", err)
+			}
+			user := pkicommon.ControllerUserForCluster(cluster)
+			if _, err := manager.ReconcileUserCertificate(ctx, *log, user, scheme.Scheme); err != nil {
+				t.Fatal("Expected no error, got:", err)
+			}
+
+			secret := &corev1.Secret{}
+			name := types.NamespacedName{Name: user.Spec.SecretName, Namespace: cluster.Namespace}
+			if err := manager.client.Get(ctx, name, secret); err != nil {
+				t.Fatal("Expected the user secret to exist, got:", err)
+			}
+			caBlock, _ := pem.Decode(secret.Data[v1.CoreCACertKey])
+			leafBlock, _ := pem.Decode(secret.Data[corev1.TLSCertKey])
+			if caBlock == nil || leafBlock == nil {
+				t.Fatal("Expected PEM certificates in the user secret")
+			}
+
+			// Same leaf and key, under the same password, but the wrong chain behind them.
+			tampered, err := certutil.GenerateJKSKeyStore(pem.EncodeToMemory(leafBlock),
+				secret.Data[corev1.TLSPrivateKeyKey], chainCA, secret.Data[v1.PasswordKey])
+			if err != nil {
+				t.Fatal("Could not build the tampered keystore:", err)
+			}
+			secret.Data[v1.TLSJKSKeyStore] = tampered
+			if err := manager.client.Update(ctx, secret); err != nil {
+				t.Fatal("Could not seed the tampered keystore:", err)
+			}
+
+			if _, err := manager.ReconcileUserCertificate(ctx, *log, user, scheme.Scheme); err != nil {
+				t.Fatal("Expected no error, got:", err)
+			}
+			if err := manager.client.Get(ctx, name, secret); err != nil {
+				t.Fatal("Expected the user secret to exist, got:", err)
+			}
+			ks, err := keystore.Decode(bytes.NewReader(secret.Data[v1.TLSJKSKeyStore]), secret.Data[v1.PasswordKey])
+			if err != nil {
+				t.Fatal("Expected the rebuilt keystore to open, got:", err)
+			}
+			entry, ok := ks[certutil.JKSKeyAlias].(*keystore.PrivateKeyEntry)
+			if !ok {
+				t.Fatal("Expected a private key entry in the keystore")
+			}
+			if len(entry.CertChain) != 2 || !bytes.Equal(entry.CertChain[1].Content, caBlock.Bytes) {
+				t.Error("Expected the keystore chain to be rebuilt as the leaf followed by the cluster CA")
+			}
+		})
 	}
 }
