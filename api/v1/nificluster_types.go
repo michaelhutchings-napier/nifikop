@@ -358,6 +358,7 @@ type NodeConfig struct {
 	// seccompProfile overrides the default seccompProfile of the nodes pod
 	SeccompProfile *corev1.SeccompProfile `json:"seccompProfile,omitempty"`
 	// securityContext overrides the default container security context for all containers in the pod
+	// that do not set their own (containers from sidecarConfigs or initContainers can set one)
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
 	// storageConfigs specifies the node related configs
 	StorageConfigs []StorageConfig `json:"storageConfigs,omitempty"`

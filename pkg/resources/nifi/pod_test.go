@@ -11,6 +11,7 @@ import (
 
 	v1 "github.com/konpyutaika/nifikop/api/v1"
 	"github.com/konpyutaika/nifikop/pkg/resources"
+	"github.com/konpyutaika/nifikop/pkg/util"
 )
 
 func ptrTo[T any](v T) *T { return &v }
@@ -136,4 +137,60 @@ func TestPodOverridesErrorIsReturned(t *testing.T) {
 	obj, err := r.pod(v1.Node{Id: 0}, nodeConfig, []corev1.PersistentVolumeClaim{}, zap.Logger{})
 	require.Error(t, err)
 	assert.Nil(t, obj)
+}
+
+func TestInjectAdditionalSecurityContextPreservesContainerOverrides(t *testing.T) {
+	runAsRoot := int64(0)
+	runAsGroup := int64(2)
+
+	rec := Reconciler{}
+	containers := []corev1.Container{
+		{Name: "nifi"},
+		{
+			Name: "storage-manager",
+			SecurityContext: &corev1.SecurityContext{
+				Privileged: util.BoolPointer(true),
+				RunAsUser:  &runAsRoot,
+			},
+		},
+		{
+			Name: "object-sync",
+			SecurityContext: &corev1.SecurityContext{
+				AllowPrivilegeEscalation: util.BoolPointer(false),
+				RunAsNonRoot:             util.BoolPointer(true),
+			},
+		},
+	}
+	injected := rec.injectAdditionalSecurityContext(&v1.NodeConfig{
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: util.BoolPointer(false),
+			RunAsNonRoot:             util.BoolPointer(true),
+			RunAsGroup:               &runAsGroup,
+		},
+	}, containers)
+
+	require.Len(t, injected, 3)
+
+	byName := map[string]corev1.Container{}
+	for _, container := range injected {
+		byName[container.Name] = container
+	}
+
+	require.NotNil(t, byName["nifi"].SecurityContext)
+	assert.Nil(t, byName["nifi"].SecurityContext.RunAsUser)
+	assert.Equal(t, runAsGroup, *byName["nifi"].SecurityContext.RunAsGroup)
+	assert.False(t, *byName["nifi"].SecurityContext.AllowPrivilegeEscalation)
+
+	require.NotNil(t, byName["storage-manager"].SecurityContext)
+	assert.True(t, *byName["storage-manager"].SecurityContext.Privileged)
+	assert.Equal(t, runAsRoot, *byName["storage-manager"].SecurityContext.RunAsUser)
+	assert.Nil(t, byName["storage-manager"].SecurityContext.RunAsNonRoot)
+	assert.Nil(t, byName["storage-manager"].SecurityContext.AllowPrivilegeEscalation)
+
+	require.NotNil(t, byName["object-sync"].SecurityContext)
+	assert.Nil(t, byName["object-sync"].SecurityContext.Privileged)
+	assert.Nil(t, byName["object-sync"].SecurityContext.RunAsUser)
+	assert.Nil(t, byName["object-sync"].SecurityContext.RunAsGroup)
+	assert.True(t, *byName["object-sync"].SecurityContext.RunAsNonRoot)
+	assert.False(t, *byName["object-sync"].SecurityContext.AllowPrivilegeEscalation)
 }

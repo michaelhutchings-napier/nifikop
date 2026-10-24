@@ -6,6 +6,8 @@
 
 ### Fixed Bugs
 
+- [PR #XXX](https://github.com/konpyutaika/nifikop/pull/XXX) - **[Operator/NifiCluster]** Keep the `securityContext` of containers from `sidecarConfigs` and `initContainers`: the node `securityContext` (or the default one) is now only applied to containers that do not set their own.
+
 ### Deprecated
 
 ### Removed

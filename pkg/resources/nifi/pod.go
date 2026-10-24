@@ -609,8 +609,11 @@ func (r *Reconciler) injectAdditionalSecurityContext(nodeConfig *v1.NodeConfig, 
 		securityContext = nodeConfig.SecurityContext
 	}
 
+	// Containers from sidecarConfigs or initContainers keep a security context they set themselves.
 	for _, container := range containers {
-		container.SecurityContext = securityContext
+		if container.SecurityContext == nil {
+			container.SecurityContext = securityContext
+		}
 
 		injectedContainers = append(injectedContainers, container)
 	}
