@@ -2,6 +2,8 @@
 
 ### Added
 
+- [PR #XXX](https://github.com/konpyutaika/nifikop/pull/XXX) - **[Operator/NifiCluster]** Add `seLinuxOptions` to `NodeConfig` to set the SELinux context of the NiFi pods.
+
 ### Changed
 
 ### Fixed Bugs

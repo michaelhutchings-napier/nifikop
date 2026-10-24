@@ -137,3 +137,39 @@ func TestPodOverridesErrorIsReturned(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, obj)
 }
+
+func TestPodAppliesNodeConfigSELinuxOptions(t *testing.T) {
+	rec := Reconciler{
+		Reconciler: resources.Reconciler{
+			NifiCluster: &v1.NifiCluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "cluster",
+					Namespace: "namespace",
+				},
+				Spec: v1.NifiClusterSpec{
+					ListenersConfig: &v1.ListenersConfig{
+						InternalListeners: []v1.InternalListenerConfig{
+							{
+								Type:          v1.HttpListenerType,
+								Name:          "http",
+								ContainerPort: 8080,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	obj, err := rec.pod(v1.Node{Id: 1}, &v1.NodeConfig{
+		SELinuxOptions: &corev1.SELinuxOptions{
+			Level: "s0:c572,c681",
+		},
+	}, nil, *zap.NewNop())
+	require.NoError(t, err)
+	pod := obj.(*corev1.Pod)
+
+	require.NotNil(t, pod.Spec.SecurityContext)
+	require.NotNil(t, pod.Spec.SecurityContext.SELinuxOptions)
+	assert.Equal(t, "s0:c572,c681", pod.Spec.SecurityContext.SELinuxOptions.Level)
+}
