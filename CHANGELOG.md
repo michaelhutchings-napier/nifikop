@@ -6,6 +6,8 @@
 
 ### Fixed Bugs
 
+- [PR #XXX](https://github.com/konpyutaika/nifikop/pull/XXX) - **[Operator/NifiCluster]** Do not delete and recreate a node pod that is not ready while its graceful upscale or downscale is running, and report a `GracefulActionPodStalled` event and node `errorMessage` once the pod is still not ready after `nifiClusterTaskSpec.retryDurationMinutes`.
+
 ### Deprecated
 
 ### Removed
